@@ -379,7 +379,12 @@ export async function capturePayment(
   amountToCaptureCents?: number,
   isPartial: boolean = false
 ): Promise<{ data: HyperswitchPaymentIntent; log: ApiAuditLog }> {
-  const body = amountToCaptureCents ? { amount_to_capture: amountToCaptureCents } : {};
+  const body = {
+    amount_to_capture: amountToCaptureCents || 27500,
+    amount: amountToCaptureCents || 27500,
+    currency: 'USD',
+    capture_method: 'manual',
+  };
   const result = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}/capture`, 'POST', body);
 
   const capturedAmt = amountToCaptureCents || 27500;
