@@ -420,7 +420,17 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     setSelectedCardId(card.id);
     const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
     if (targetPaymentId) {
-      await attachPaymentMethodToIntent(targetPaymentId, { last4: card.last4, brand: card.brand });
+      await updatePaymentIntent(targetPaymentId, {
+        amountCents: grandTotalCents,
+        captureMethod,
+        card: { last4: card.last4, brand: card.brand, holderName: card.holder },
+        metadata: {
+          has_vip_protection: hasVipProtection,
+          has_parking: hasParking,
+          has_merch: hasMerch,
+          has_food: hasFood,
+        },
+      });
     }
   };
 
@@ -441,7 +451,12 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       return;
     }
 
-    const { data } = await confirmPaymentIntent(targetPaymentId, method, grandTotalCents);
+    const { data } = await confirmPaymentIntent(
+      targetPaymentId,
+      method,
+      grandTotalCents,
+      activeCard ? { last4: activeCard.last4, brand: activeCard.brand, holderName: activeCard.holder } : undefined
+    );
     setProcessingPayment(false);
 
     if (data && (data.status === 'succeeded' || data.status === 'requires_capture')) {

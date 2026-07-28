@@ -231,9 +231,10 @@ export async function updatePaymentIntent(
   paymentId: string,
   params: {
     amountCents: number;
+    captureMethod?: CaptureMethod;
     metadata?: Record<string, any>;
     lastChangedAddon?: { name: string; action: 'Added' | 'Removed' };
-    card?: { last4: string; brand: string };
+    card?: { last4: string; brand: string; rawCardNumber?: string; holderName?: string };
   }
 ) {
   // Reject updates if transaction is already in a cancelled terminal state
@@ -242,33 +243,45 @@ export async function updatePaymentIntent(
     return { data: null, log: {} as ApiAuditLog };
   }
 
-  const cardBrand = params.card?.brand || 'visa';
-  const cardLast4 = params.card?.last4 || '1111';
+  const effectiveCaptureMethod = params.captureMethod || storedTx?.capture_method || 'automatic';
 
-  const body = {
+  const body: any = {
     amount: params.amountCents,
     currency: 'USD',
-    payment_method: 'card',
-    payment_method_data: {
-      card: {
-        card_number: getValidTestCardNumber(cardBrand, cardLast4),
-        card_exp_month: '03',
-        card_exp_year: '2030',
-        card_cvc: '737',
-        card_holder_name: 'John Doe',
-      },
-    },
+    capture_method: effectiveCaptureMethod,
     metadata: params.metadata || {},
   };
 
-  const res = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}`, 'POST', body);
+  const hasCard = Boolean(params.card || (storedTx && storedTx.status === 'requires_confirmation'));
 
-  let historyDetails = `Updated add-ons. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
-  if (params.lastChangedAddon) {
-    historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
+  if (hasCard) {
+    const cardBrand = params.card?.brand || 'visa';
+    const cardLast4 = params.card?.last4 || '1111';
+    const holderName = params.card?.holderName || 'John Doe';
+
+    body.payment_method = 'card';
+    body.payment_method_data = {
+      card: {
+        card_holder_name: holderName,
+        card_number: getValidTestCardNumber(cardBrand, cardLast4, params.card?.rawCardNumber),
+        card_exp_month: '03',
+        card_exp_year: '2030',
+        card_cvc: '737',
+        card_network: cardBrand.toLowerCase(),
+      },
+    };
   }
 
-  const newStatus = (res.data?.status as PaymentStatus) || storedTx?.status || 'requires_confirmation';
+  const res = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}`, 'POST', body);
+
+  let historyDetails = `Updated total to $${(params.amountCents / 100).toFixed(2)}`;
+  if (params.lastChangedAddon) {
+    historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
+  } else if (params.card && storedTx?.status === 'requires_payment_method') {
+    historyDetails = `Attached payment method (${params.card.brand.toUpperCase()} •••• ${params.card.last4})`;
+  }
+
+  const newStatus = hasCard ? 'requires_confirmation' : 'requires_payment_method';
 
   updateStoredTransactionStatus(paymentId, {
     total_amount_cents: params.amountCents,
@@ -341,20 +354,26 @@ export async function retrievePaymentIntent(paymentId: string) {
 export async function confirmPaymentIntent(
   paymentId: string,
   captureMethod: CaptureMethod = 'automatic',
-  amountCents: number = 27500
+  amountCents: number = 27500,
+  cardInfo?: { last4: string; brand: string; holderName?: string; rawCardNumber?: string }
 ): Promise<{ data: HyperswitchPaymentIntent; log: ApiAuditLog }> {
+  const cardBrand = cardInfo?.brand || 'visa';
+  const cardLast4 = cardInfo?.last4 || '1111';
+  const holderName = cardInfo?.holderName || 'John Doe';
+
   const body = {
+    confirm: true,
     payment_method: 'card',
     payment_method_data: {
       card: {
-        card_number: '4111111111111111',
+        card_holder_name: holderName,
+        card_number: getValidTestCardNumber(cardBrand, cardLast4, cardInfo?.rawCardNumber),
         card_exp_month: '03',
         card_exp_year: '2030',
         card_cvc: '737',
-        card_holder_name: 'John Doe',
+        card_network: cardBrand.toLowerCase(),
       },
     },
-    confirm: true,
     capture_method: captureMethod,
   };
 
