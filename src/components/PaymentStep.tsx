@@ -166,6 +166,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             has_merch: newMerch,
             has_food: newFood,
           },
+          card: activeCard ? { last4: activeCard.last4, brand: activeCard.brand } : undefined,
         });
       } finally {
         setIsUpdating(false);

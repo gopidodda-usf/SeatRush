@@ -233,6 +233,7 @@ export async function updatePaymentIntent(
     amountCents: number;
     metadata?: Record<string, any>;
     lastChangedAddon?: { name: string; action: 'Added' | 'Removed' };
+    card?: { last4: string; brand: string };
   }
 ) {
   // Reject updates if transaction is already in a cancelled terminal state
@@ -241,10 +242,26 @@ export async function updatePaymentIntent(
     return { data: null, log: {} as ApiAuditLog };
   }
 
-  const body = {
+  const body: any = {
     amount: params.amountCents,
     metadata: params.metadata || {},
   };
+
+  // If card is provided or intent is in requires_confirmation, include card payload to preserve status
+  if (params.card || (storedTx && storedTx.status === 'requires_confirmation')) {
+    const cardBrand = params.card?.brand || 'visa';
+    const cardLast4 = params.card?.last4 || '1111';
+    body.payment_method = 'card';
+    body.payment_method_data = {
+      card: {
+        card_number: getValidTestCardNumber(cardBrand, cardLast4),
+        card_exp_month: '03',
+        card_exp_year: '2030',
+        card_cvc: '737',
+        card_holder_name: 'John Doe',
+      },
+    };
+  }
 
   const res = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}`, 'POST', body);
 
@@ -253,11 +270,14 @@ export async function updatePaymentIntent(
     historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
   }
 
+  const newStatus = (res.data?.status as PaymentStatus) || storedTx?.status || 'requires_payment_method';
+
   updateStoredTransactionStatus(paymentId, {
     total_amount_cents: params.amountCents,
     authorized_hold_cents: params.amountCents,
     has_vip_protection: Boolean(params.metadata?.has_vip_protection),
-    historyLabel: 'requires_payment_method (Updated)',
+    status: newStatus,
+    historyLabel: `${newStatus} (Updated)`,
     historyDetails,
   });
 
