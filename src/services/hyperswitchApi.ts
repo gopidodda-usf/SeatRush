@@ -265,7 +265,7 @@ export async function updatePaymentIntent(
     body.payment_method_data = {
       card: {
         card_holder_name: holderName,
-        card_number: getValidTestCardNumber(cardBrand, cardLast4, params.card?.rawCardNumber),
+        card_number: getValidTestCardNumber(cardBrand, cardLast4, params.card?.rawCardNumber, effectiveCaptureMethod === 'manual'),
         card_exp_month: '03',
         card_exp_year: '2030',
         card_cvc: '737',
@@ -299,10 +299,14 @@ export async function updatePaymentIntent(
   return res;
 }
 
-function getValidTestCardNumber(brand: string, last4: string, rawCardNumber?: string): string {
+function getValidTestCardNumber(brand: string, last4: string, rawCardNumber?: string, isManualHold?: boolean): string {
   if (rawCardNumber) {
     const clean = rawCardNumber.replace(/\D/g, '');
     if (clean.length >= 13) return clean;
+  }
+
+  if (isManualHold) {
+    return '4000000000000002'; // Hyperswitch Sandbox Manual Hold Card (requires_capture)
   }
 
   const b = brand.toLowerCase();
@@ -372,7 +376,7 @@ export async function confirmPaymentIntent(
     payment_method_data: {
       card: {
         card_holder_name: holderName,
-        card_number: getValidTestCardNumber(cardBrand, cardLast4, cardInfo?.rawCardNumber),
+        card_number: getValidTestCardNumber(cardBrand, cardLast4, cardInfo?.rawCardNumber, captureMethod === 'manual'),
         card_exp_month: '03',
         card_exp_year: '2030',
         card_cvc: '737',
