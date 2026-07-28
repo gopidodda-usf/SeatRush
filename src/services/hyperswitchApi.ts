@@ -269,7 +269,7 @@ export async function updatePaymentIntent(
         card_exp_month: '03',
         card_exp_year: '2030',
         card_cvc: '737',
-        card_network: cardBrand.toLowerCase(),
+        card_network: cardBrand.toUpperCase(),
       },
     };
   }
@@ -375,7 +375,7 @@ export async function confirmPaymentIntent(
         card_exp_month: '03',
         card_exp_year: '2030',
         card_cvc: '737',
-        card_network: cardBrand.toLowerCase(),
+        card_network: cardBrand.toUpperCase(),
       },
     },
     capture_method: captureMethod,
