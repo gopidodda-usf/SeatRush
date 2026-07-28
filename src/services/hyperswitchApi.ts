@@ -440,6 +440,7 @@ export async function confirmGooglePayIntent(
           last4: '1111',
           card_network: 'VISA',
           type: 'CARD',
+          description: 'Google Pay Visa Card',
           card_exp_month: '03',
           card_exp_year: '30',
           auth_code: '003225',
