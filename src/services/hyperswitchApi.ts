@@ -305,6 +305,10 @@ function getValidTestCardNumber(brand: string, last4: string, rawCardNumber?: st
     if (clean.length >= 13) return clean;
   }
 
+  if (last4 === '0446') {
+    return '4000003800000446';
+  }
+
   if (last4 === '0002') {
     return '4000000000000002'; // Hyperswitch Failed/Declined Test Card
   }
