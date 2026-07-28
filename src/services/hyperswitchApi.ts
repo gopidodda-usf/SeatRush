@@ -306,12 +306,13 @@ function getValidTestCardNumber(brand: string, last4: string, rawCardNumber?: st
   }
 
   const b = brand.toLowerCase();
+  if (b === 'visa' || last4 === '1111') return '4111111111111111';
   if (b === 'mastercard' || last4 === '5555') return '5555555555554444';
   if (b === 'amex') return '371449635398431';
   if (b === 'discover') return '6011000000000004';
   if (b === 'jcb') return '3528111111111111';
 
-  return '4242424242424242';
+  return '4111111111111111';
 }
 
 // 2b. Attach Payment Method (`POST /payments/{id}`) - Transitions to `requires_confirmation`
