@@ -45,7 +45,7 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     brand: 'visa',
     last4: '0002',
     exp: '03/30',
-    holder: 'John Doe (Declined Test Card)',
+    holder: 'John Doe',
     isDefault: false,
   },
 ];
