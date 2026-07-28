@@ -122,6 +122,10 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
   const [hasFood, setHasFood] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const activeIntentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
+  const storedTx = getStoredTransactions().find((t) => t.payment_id === activeIntentId);
+  const effectiveCaptureMethod = storedTx?.capture_method || captureMethod || 'automatic';
+
   const baseCents = (item.unitPriceCents + item.serviceFeeCents) * quantity;
   const vipCents = hasVipProtection ? 1500 : 0;
   const parkingCents = hasParking ? 2500 : 0;
@@ -997,7 +1001,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
         <div>
           <button
             disabled={!selectedCardId || processingPayment || isSessionCancelled}
-            onClick={() => handleConfirmPaymentWithMethod(captureMethod)}
+            onClick={() => handleConfirmPaymentWithMethod(effectiveCaptureMethod)}
             className="btn-primary"
             style={{
               width: '100%',
