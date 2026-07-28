@@ -40,6 +40,14 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     holder: 'John Doe',
     isDefault: false,
   },
+  {
+    id: 'card_visa_0002_declined',
+    brand: 'visa',
+    last4: '0002',
+    exp: '03/30',
+    holder: 'John Doe (Declined Test Card)',
+    isDefault: false,
+  },
 ];
 
 // Luhn Algorithm Verification for Credit/Debit Cards

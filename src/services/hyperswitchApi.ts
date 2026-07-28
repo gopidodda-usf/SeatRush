@@ -305,6 +305,10 @@ function getValidTestCardNumber(brand: string, last4: string, rawCardNumber?: st
     if (clean.length >= 13) return clean;
   }
 
+  if (last4 === '0002') {
+    return '4000000000000002'; // Hyperswitch Failed/Declined Test Card
+  }
+
   const b = brand.toLowerCase();
   if (b === 'visa' || last4 === '1111') return '4111111111111111';
   if (b === 'mastercard' || last4 === '5555') return '5555555555554444';
