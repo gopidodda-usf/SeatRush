@@ -107,4 +107,4 @@ export interface AdminTransactionRecord {
   history: PaymentStatusEvent[];
 }
 
-export type CheckoutStep = 1 | 2 | 3 | 4;
+export type CheckoutStep = 1 | 2 | 3;

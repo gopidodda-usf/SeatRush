@@ -9,9 +9,8 @@ interface StepProgressProps {
 export const StepProgress: React.FC<StepProgressProps> = ({ currentStep, onStepClick }) => {
   const steps = [
     { number: 1, label: 'Cart' },
-    { number: 2, label: 'Add Ons' },
-    { number: 3, label: 'Payment' },
-    { number: 4, label: 'Confirmation' },
+    { number: 2, label: 'Payment' },
+    { number: 3, label: 'Confirmation' },
   ];
 
   return (

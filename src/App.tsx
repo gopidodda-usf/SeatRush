@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { StepProgress } from './components/StepProgress';
 import { CartStep } from './components/CartStep';
-import { AddonsStep } from './components/AddonsStep';
 import { PaymentStep } from './components/PaymentStep';
 import { FulfillmentStep } from './components/FulfillmentStep';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -70,7 +69,7 @@ export default function App() {
 
   const handlePaymentSuccess = (intent: HyperswitchPaymentIntent) => {
     setPaymentIntent(intent);
-    setStep(4);
+    setStep(3);
   };
 
   const handleResetOrder = () => {
@@ -136,21 +135,8 @@ export default function App() {
           />
         )}
 
-        {/* Step 2: Add Ons & Event Upgrades */}
+        {/* Step 2: Payment Method & Confirmation */}
         {step === 2 && (
-          <AddonsStep
-            item={DEFAULT_TICKET}
-            quantity={quantity}
-            customer={customer}
-            captureMethod={captureMethod}
-            authType={authType}
-            onProceedToPayment={() => setStep(3)}
-            onBackToCart={() => setStep(1)}
-          />
-        )}
-
-        {/* Step 3: Payment Method & Confirmation */}
-        {step === 3 && (
           <PaymentStep
             item={DEFAULT_TICKET}
             quantity={quantity}
@@ -159,13 +145,13 @@ export default function App() {
             authType={authType}
             onUpdateCustomer={handleUpdateCustomer}
             onPaymentSuccess={handlePaymentSuccess}
-            onBack={() => setStep(2)}
+            onBack={() => setStep(1)}
             onCancel={() => setStep(1)}
           />
         )}
 
-        {/* Step 4: Success & Ticket Pass Fulfillment */}
-        {step === 4 && (
+        {/* Step 3: Success & Ticket Pass Fulfillment */}
+        {step === 3 && (
           <FulfillmentStep
             item={DEFAULT_TICKET}
             quantity={quantity}
@@ -183,6 +169,8 @@ export default function App() {
             onReset={handleResetOrder}
           />
         )}
+
+
 
       </main>
 

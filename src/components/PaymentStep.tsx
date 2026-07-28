@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CustomerDetails, TicketItem, CaptureMethod, AuthenticationType, HyperswitchPaymentIntent, PaymentStatus } from '../types';
-import { createPaymentIntent, confirmPaymentIntent, attachPaymentMethodToIntent, cancelPayment, getStoredTransactions } from '../services/hyperswitchApi';
+import { createPaymentIntent, updatePaymentIntent, confirmPaymentIntent, attachPaymentMethodToIntent, cancelPayment, getStoredTransactions } from '../services/hyperswitchApi';
 
 interface SavedCard {
   id: string;
@@ -116,12 +116,62 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [show3DSModal, setShow3DSModal] = useState(false);
 
-  const storedTx = getStoredTransactions().find(
-    (t) => t.payment_id === (paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id'))
-  );
+  const [hasVipProtection, setHasVipProtection] = useState(false);
+  const [hasParking, setHasParking] = useState(false);
+  const [hasMerch, setHasMerch] = useState(false);
+  const [hasFood, setHasFood] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   const baseCents = (item.unitPriceCents + item.serviceFeeCents) * quantity;
-  const totalCents = storedTx ? storedTx.total_amount_cents : baseCents;
-  const grandTotal = totalCents / 100;
+  const vipCents = hasVipProtection ? 1500 : 0;
+  const parkingCents = hasParking ? 2500 : 0;
+  const merchCents = hasMerch ? 1000 : 0;
+  const foodCents = hasFood ? 2000 : 0;
+
+  const totalAddonsCents = vipCents + parkingCents + merchCents + foodCents;
+  const grandTotalCents = baseCents + totalAddonsCents;
+  const grandTotal = grandTotalCents / 100;
+
+  const handleToggleAddon = async (
+    addonType: 'vip' | 'parking' | 'merch' | 'food',
+    checked: boolean
+  ) => {
+    let newVip = hasVipProtection;
+    let newParking = hasParking;
+    let newMerch = hasMerch;
+    let newFood = hasFood;
+
+    if (addonType === 'vip') { setHasVipProtection(checked); newVip = checked; }
+    if (addonType === 'parking') { setHasParking(checked); newParking = checked; }
+    if (addonType === 'merch') { setHasMerch(checked); newMerch = checked; }
+    if (addonType === 'food') { setHasFood(checked); newFood = checked; }
+
+    const newAddonsCents =
+      (newVip ? 1500 : 0) +
+      (newParking ? 2500 : 0) +
+      (newMerch ? 1000 : 0) +
+      (newFood ? 2000 : 0);
+
+    const newTotalCents = baseCents + newAddonsCents;
+
+    const activeIntentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
+    if (activeIntentId) {
+      setIsUpdating(true);
+      try {
+        await updatePaymentIntent(activeIntentId, {
+          amountCents: newTotalCents,
+          metadata: {
+            has_vip_protection: newVip,
+            has_parking: newParking,
+            has_merch: newMerch,
+            has_food: newFood,
+          },
+        });
+      } finally {
+        setIsUpdating(false);
+      }
+    }
+  };
 
   // Saved Cards state - initialized with no card pre-selected (null)
   const [savedCards, setSavedCards] = useState<SavedCard[]>(INITIAL_SAVED_CARDS);
@@ -390,7 +440,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       return;
     }
 
-    const { data } = await confirmPaymentIntent(targetPaymentId, method, totalCents);
+    const { data } = await confirmPaymentIntent(targetPaymentId, method, grandTotalCents);
     setProcessingPayment(false);
 
     if (data && (data.status === 'succeeded' || data.status === 'requires_capture')) {
@@ -410,7 +460,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     if (!targetPaymentId) return;
 
     setProcessingPayment(true);
-    const { data } = await confirmPaymentIntent(targetPaymentId, 'automatic', totalCents);
+    const { data } = await confirmPaymentIntent(targetPaymentId, 'automatic', grandTotalCents);
     setProcessingPayment(false);
 
     if (data && (data.status === 'succeeded' || data.status === 'requires_capture')) {
@@ -590,9 +640,73 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             <h4 style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
               {item.eventName}
             </h4>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>
               {quantity}x Tickets • {item.venue}
             </p>
+
+            {/* Interactive Add-ons Section */}
+            <div style={{
+              borderTop: '1px solid var(--border-subtle)',
+              paddingTop: '0.75rem',
+              marginBottom: '0.85rem',
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent-violet)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Optional Event Add-ons
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasVipProtection}
+                      onChange={(e) => handleToggleAddon('vip', e.target.checked)}
+                      style={{ accentColor: 'var(--accent-violet)', cursor: 'pointer' }}
+                    />
+                    <span>VIP Protection</span>
+                  </span>
+                  <span style={{ color: 'var(--accent-violet)', fontWeight: 600 }}>+$15.00</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasParking}
+                      onChange={(e) => handleToggleAddon('parking', e.target.checked)}
+                      style={{ accentColor: 'var(--accent-violet)', cursor: 'pointer' }}
+                    />
+                    <span>Express Parking</span>
+                  </span>
+                  <span style={{ color: 'var(--accent-violet)', fontWeight: 600 }}>+$25.00</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasMerch}
+                      onChange={(e) => handleToggleAddon('merch', e.target.checked)}
+                      style={{ accentColor: 'var(--accent-violet)', cursor: 'pointer' }}
+                    />
+                    <span>Souvenir Lanyard</span>
+                  </span>
+                  <span style={{ color: 'var(--accent-violet)', fontWeight: 600 }}>+$10.00</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasFood}
+                      onChange={(e) => handleToggleAddon('food', e.target.checked)}
+                      style={{ accentColor: 'var(--accent-violet)', cursor: 'pointer' }}
+                    />
+                    <span>Concession Voucher</span>
+                  </span>
+                  <span style={{ color: 'var(--accent-violet)', fontWeight: 600 }}>+$20.00</span>
+                </label>
+              </div>
+            </div>
 
             <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.78rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '1rem', alignItems: 'center', color: 'var(--text-secondary)' }}>
@@ -605,6 +719,31 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{quantity} x ${(item.serviceFeeCents / 100).toFixed(2)}</span>
                 <span style={{ fontWeight: 600, textAlign: 'right', minWidth: '55px' }}>${((item.serviceFeeCents * quantity) / 100).toFixed(2)}</span>
               </div>
+
+              {hasVipProtection && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-violet)' }}>
+                  <span>VIP Protection</span>
+                  <span>+$15.00</span>
+                </div>
+              )}
+              {hasParking && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-violet)' }}>
+                  <span>VIP Express Parking</span>
+                  <span>+$25.00</span>
+                </div>
+              )}
+              {hasMerch && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-violet)' }}>
+                  <span>Souvenir Lanyard</span>
+                  <span>+$10.00</span>
+                </div>
+              )}
+              {hasFood && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-violet)' }}>
+                  <span>Concession Voucher</span>
+                  <span>+$20.00</span>
+                </div>
+              )}
             </div>
 
             {activeCard && (
@@ -619,6 +758,11 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'var(--font-heading)', color: 'var(--text-primary)' }}>
               ${grandTotal.toFixed(2)} USD
             </div>
+            {isUpdating && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--accent-emerald)', marginTop: '0.4rem', fontStyle: 'italic' }}>
+                Updating payment intent...
+              </div>
+            )}
           </div>
         </div>
 
