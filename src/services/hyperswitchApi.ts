@@ -242,17 +242,14 @@ export async function updatePaymentIntent(
     return { data: null, log: {} as ApiAuditLog };
   }
 
-  const body: any = {
-    amount: params.amountCents,
-    metadata: params.metadata || {},
-  };
+  const cardBrand = params.card?.brand || 'visa';
+  const cardLast4 = params.card?.last4 || '1111';
 
-  // If card is provided or intent is in requires_confirmation, include card payload to preserve status
-  if (params.card || (storedTx && storedTx.status === 'requires_confirmation')) {
-    const cardBrand = params.card?.brand || 'visa';
-    const cardLast4 = params.card?.last4 || '1111';
-    body.payment_method = 'card';
-    body.payment_method_data = {
+  const body = {
+    amount: params.amountCents,
+    currency: 'USD',
+    payment_method: 'card',
+    payment_method_data: {
       card: {
         card_number: getValidTestCardNumber(cardBrand, cardLast4),
         card_exp_month: '03',
@@ -260,8 +257,9 @@ export async function updatePaymentIntent(
         card_cvc: '737',
         card_holder_name: 'John Doe',
       },
-    };
-  }
+    },
+    metadata: params.metadata || {},
+  };
 
   const res = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}`, 'POST', body);
 
@@ -270,7 +268,7 @@ export async function updatePaymentIntent(
     historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
   }
 
-  const newStatus = (res.data?.status as PaymentStatus) || storedTx?.status || 'requires_payment_method';
+  const newStatus = (res.data?.status as PaymentStatus) || storedTx?.status || 'requires_confirmation';
 
   updateStoredTransactionStatus(paymentId, {
     total_amount_cents: params.amountCents,
