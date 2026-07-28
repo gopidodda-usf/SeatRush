@@ -242,7 +242,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
         const { data } = await createPaymentIntent({
           amountCents: baseCents,
           currency: 'USD',
-          captureMethod: 'automatic',
+          captureMethod: captureMethod || 'automatic',
           authType,
           customerId: `cust_${customer.email.replace(/[^a-zA-Z0-9]/g, '_') || 'guest'}`,
           description: `SeatRush Order: ${item.eventName}`,
@@ -255,11 +255,6 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
           sessionStorage.setItem('active_checkout_intent_id', data.payment_id);
           if (isSubscribed) {
             setPaymentIntent(data);
-            // Attach selected payment method details to transition intent to `requires_confirmation`
-            const defaultCard = savedCards.find((c) => c.id === selectedCardId) || savedCards[0];
-            if (defaultCard) {
-              await attachPaymentMethodToIntent(data.payment_id, { last4: defaultCard.last4, brand: defaultCard.brand });
-            }
           }
         }
       } finally {

@@ -104,6 +104,8 @@ export interface AdminTransactionRecord {
   logs_count: number;
   has_vip_protection?: boolean;
   cancellation_reason?: string;
+  card_brand?: string;
+  card_last4?: string;
   history: PaymentStatusEvent[];
 }
 

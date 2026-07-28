@@ -252,11 +252,13 @@ export async function updatePaymentIntent(
     metadata: params.metadata || {},
   };
 
-  const hasCard = Boolean(params.card || (storedTx && storedTx.status === 'requires_confirmation'));
+  const activeCardBrand = params.card?.brand || storedTx?.card_brand;
+  const activeCardLast4 = params.card?.last4 || storedTx?.card_last4;
+  const hasCard = Boolean(activeCardBrand && activeCardLast4);
 
   if (hasCard) {
-    const cardBrand = params.card?.brand || 'visa';
-    const cardLast4 = params.card?.last4 || '1111';
+    const cardBrand = activeCardBrand || 'visa';
+    const cardLast4 = activeCardLast4 || '1111';
     const holderName = params.card?.holderName || 'John Doe';
 
     body.payment_method = 'card';
@@ -276,7 +278,7 @@ export async function updatePaymentIntent(
 
   let historyDetails = `Updated total to $${(params.amountCents / 100).toFixed(2)}`;
   if (params.lastChangedAddon) {
-    historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Updated total to $${(params.amountCents / 100).toFixed(2)}`;
+    historyDetails = `${params.lastChangedAddon.action} ${params.lastChangedAddon.name}. Total: $${(params.amountCents / 100).toFixed(2)}`;
   } else if (params.card && storedTx?.status === 'requires_payment_method') {
     historyDetails = `Attached payment method (${params.card.brand.toUpperCase()} •••• ${params.card.last4})`;
   }
@@ -288,6 +290,8 @@ export async function updatePaymentIntent(
     authorized_hold_cents: params.amountCents,
     has_vip_protection: Boolean(params.metadata?.has_vip_protection),
     status: newStatus,
+    card_brand: activeCardBrand,
+    card_last4: activeCardLast4,
     historyLabel: `${newStatus} (Updated)`,
     historyDetails,
   });
