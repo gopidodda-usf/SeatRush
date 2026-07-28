@@ -200,8 +200,8 @@ export async function createPaymentIntent(params: {
   if (res.data && res.data.payment_id) {
     saveStoredTransaction({
       payment_id: res.data.payment_id,
-      customer_name: params.customerName || 'Alex Morgan',
-      customer_email: params.customerEmail || 'alex.morgan@example.com',
+      customer_name: params.customerName || 'John Doe',
+      customer_email: params.customerEmail || 'john.doe@example.com',
       event_name: params.description.replace('SeatRush Order: ', ''),
       total_amount_cents: params.amountCents,
       status: 'requires_payment_method',
@@ -330,10 +330,10 @@ export async function confirmPaymentIntent(
     payment_method_data: {
       card: {
         card_number: '4111111111111111',
-        card_exp_month: '12',
-        card_exp_year: '2028',
-        card_cvc: '123',
-        card_holder_name: 'Alex Morgan',
+        card_exp_month: '03',
+        card_exp_year: '2030',
+        card_cvc: '737',
+        card_holder_name: 'John Doe',
       },
     },
     confirm: true,

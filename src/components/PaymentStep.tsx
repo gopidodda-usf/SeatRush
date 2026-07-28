@@ -25,11 +25,11 @@ interface PaymentStepProps {
 
 const INITIAL_SAVED_CARDS: SavedCard[] = [
   {
-    id: 'card_visa_4242',
+    id: 'card_visa_1111',
     brand: 'visa',
-    last4: '4242',
-    exp: '12/28',
-    holder: 'Alex Morgan',
+    last4: '1111',
+    exp: '03/30',
+    holder: 'John Doe',
     isDefault: true,
   },
   {
@@ -37,7 +37,7 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     brand: 'mastercard',
     last4: '5555',
     exp: '09/27',
-    holder: 'Alex Morgan',
+    holder: 'John Doe',
     isDefault: false,
   },
 ];
@@ -105,6 +105,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
   item,
   quantity,
   customer,
+  captureMethod,
   authType,
   onPaymentSuccess,
   onBack,
@@ -837,39 +838,22 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
           </button>
         </div>
 
-        {/* Dual Action Buttons: Pay Now vs Reserve Seat Side-by-Side */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+        {/* Single Primary Action Button: Complete Order */}
+        <div>
           <button
             disabled={!selectedCardId || processingPayment || isSessionCancelled}
-            onClick={() => handleConfirmPaymentWithMethod('automatic')}
+            onClick={() => handleConfirmPaymentWithMethod(captureMethod)}
             className="btn-primary"
             style={{
-              padding: '0.75rem 0.5rem',
-              fontSize: '0.78rem',
+              width: '100%',
+              padding: '0.8rem 1.25rem',
+              fontSize: '0.88rem',
               whiteSpace: 'nowrap',
               opacity: !selectedCardId ? 0.5 : 1,
               cursor: !selectedCardId ? 'not-allowed' : 'pointer',
             }}
           >
-            {processingPayment ? 'Authorizing...' : 'Pay Now'}
-          </button>
-
-          <button
-            disabled={!selectedCardId || processingPayment || isSessionCancelled}
-            onClick={() => handleConfirmPaymentWithMethod('manual')}
-            className="btn-secondary"
-            style={{
-              padding: '0.65rem 0.5rem',
-              fontSize: '0.78rem',
-              borderColor: '#60A5FA',
-              color: '#93C5FD',
-              background: 'rgba(59, 130, 246, 0.1)',
-              whiteSpace: 'nowrap',
-              opacity: !selectedCardId ? 0.5 : 1,
-              cursor: !selectedCardId ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {processingPayment ? 'Authorizing...' : 'Reserve Seat'}
+            {processingPayment ? 'Authorizing...' : 'Complete Order'}
           </button>
         </div>
       </div>

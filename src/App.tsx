@@ -27,8 +27,8 @@ const DEFAULT_TICKET: TicketItem = {
 };
 
 const DEFAULT_CUSTOMER: CustomerDetails = {
-  fullName: 'Alex Morgan',
-  email: 'alex.morgan@example.com',
+  fullName: 'John Doe',
+  email: 'john.doe@example.com',
   phone: '+1 (305) 555-0192',
   deliveryMethod: 'mobile_pass',
 };
@@ -36,7 +36,7 @@ const DEFAULT_CUSTOMER: CustomerDetails = {
 export default function App() {
   const [step, setStep] = useState<CheckoutStep>(1);
   const [quantity, setQuantity] = useState(2);
-  const [captureMethod] = useState<CaptureMethod>('automatic');
+  const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('automatic');
   const [authType] = useState<AuthenticationType>('no_three_ds');
   const [customer, setCustomer] = useState<CustomerDetails>(DEFAULT_CUSTOMER);
   const [paymentIntent, setPaymentIntent] = useState<HyperswitchPaymentIntent | null>(null);
@@ -129,7 +129,10 @@ export default function App() {
             item={DEFAULT_TICKET}
             quantity={quantity}
             onUpdateQuantity={(q) => setQuantity(q)}
-            onProceed={() => setStep(2)}
+            onProceed={(method) => {
+              setCaptureMethod(method);
+              setStep(2);
+            }}
           />
         )}
 

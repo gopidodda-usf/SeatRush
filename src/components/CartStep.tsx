@@ -1,11 +1,11 @@
 import React from 'react';
-import type { TicketItem } from '../types';
+import type { TicketItem, CaptureMethod } from '../types';
 
 interface CartStepProps {
   item: TicketItem;
   quantity: number;
   onUpdateQuantity: (qty: number) => void;
-  onProceed: () => void;
+  onProceed: (method: CaptureMethod) => void;
 }
 
 export const CartStep: React.FC<CartStepProps> = ({
@@ -181,16 +181,31 @@ export const CartStep: React.FC<CartStepProps> = ({
 
       </div>
 
-      {/* Bottom Action Row: Positioned Way to the Bottom above the Footer, Underneath the Order Breakdown Column */}
+      {/* Bottom Action Row: Dual Action Buttons under Order Breakdown Column */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.75rem', marginTop: 'auto', paddingTop: '2.5rem' }}>
         <div /> {/* Left empty space matching Cart column */}
-        <div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
           <button
-            onClick={onProceed}
+            onClick={() => onProceed('automatic')}
             className="btn-primary"
-            style={{ width: '100%', padding: '0.8rem 1.25rem', fontSize: '0.88rem' }}
+            style={{ padding: '0.75rem 0.5rem', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
           >
-            Proceed to Payment →
+            Pay Now
+          </button>
+
+          <button
+            onClick={() => onProceed('manual')}
+            className="btn-secondary"
+            style={{
+              padding: '0.65rem 0.5rem',
+              fontSize: '0.78rem',
+              borderColor: '#60A5FA',
+              color: '#93C5FD',
+              background: 'rgba(59, 130, 246, 0.1)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Reserve Seat
           </button>
         </div>
       </div>
