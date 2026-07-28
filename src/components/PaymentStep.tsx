@@ -37,7 +37,7 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     brand: 'mastercard',
     last4: '5555',
     exp: '09/27',
-    holder: 'John Doe',
+    holder: 'Alex Morgan',
     isDefault: false,
   },
   {
