@@ -423,6 +423,66 @@ export async function confirmPaymentIntent(
   return { data: mockOrRealData, log: result.log };
 }
 
+// 4b. Confirm Google Pay Wallet Intent (`POST /payments/{id}/confirm`)
+export async function confirmGooglePayIntent(
+  paymentId: string,
+  captureMethod: CaptureMethod = 'automatic',
+  amountCents: number = 27500,
+  customerEmail?: string
+): Promise<{ data: HyperswitchPaymentIntent; log: ApiAuditLog }> {
+  const body = {
+    confirm: true,
+    payment_method: 'wallet',
+    payment_method_type: 'google_pay',
+    payment_method_data: {
+      wallet: {
+        google_pay: {
+          last4: '1111',
+          card_network: 'VISA',
+          type: 'CARD',
+          card_exp_month: '03',
+          card_exp_year: '30',
+          auth_code: '003225',
+          email: customerEmail || 'john.doe@example.com',
+        },
+      },
+    },
+    capture_method: captureMethod,
+  };
+
+  const result = await request<HyperswitchPaymentIntent>(`/payments/${paymentId}/confirm`, 'POST', body);
+
+  let finalStatus: PaymentStatus = captureMethod === 'manual' ? 'requires_capture' : 'succeeded';
+  if (result.data && result.data.status && captureMethod !== 'manual') {
+    finalStatus = result.data.status as PaymentStatus;
+  }
+
+  const mockOrRealData: HyperswitchPaymentIntent = {
+    payment_id: paymentId,
+    merchant_id: result.data?.merchant_id || 'merchant_1785020339',
+    status: finalStatus,
+    amount: amountCents,
+    currency: 'USD',
+    client_secret: `${paymentId}_secret_test`,
+    capture_method: captureMethod,
+    amount_capturable: finalStatus === 'requires_capture' ? amountCents : 0,
+    amount_received: finalStatus === 'succeeded' ? amountCents : 0,
+  };
+
+  updateStoredTransactionStatus(paymentId, {
+    status: finalStatus,
+    capture_method: captureMethod,
+    amount_captured_cents: finalStatus === 'succeeded' ? amountCents : 0,
+    authorized_hold_cents: finalStatus === 'requires_capture' ? amountCents : 0,
+    historyLabel: finalStatus === 'requires_capture' ? 'requires_capture (Google Pay)' : 'succeeded (Google Pay)',
+    historyDetails: finalStatus === 'requires_capture'
+      ? `Google Pay Authorized Pre-Auth Hold of $${(amountCents / 100).toFixed(2)} (Manual Capture Required)`
+      : `Google Pay Express Checkout Confirmed & Auto-Captured $${(amountCents / 100).toFixed(2)}`,
+  });
+
+  return { data: mockOrRealData, log: result.log };
+}
+
 // 5. Capture Payment Intent (`POST /payments/{id}/capture`) - Full or Partial Capture
 export async function capturePayment(
   paymentId: string,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CustomerDetails, TicketItem, CaptureMethod, AuthenticationType, HyperswitchPaymentIntent, PaymentStatus } from '../types';
-import { createPaymentIntent, updatePaymentIntent, confirmPaymentIntent, attachPaymentMethodToIntent, cancelPayment, getStoredTransactions } from '../services/hyperswitchApi';
+import { createPaymentIntent, updatePaymentIntent, confirmPaymentIntent, confirmGooglePayIntent, attachPaymentMethodToIntent, cancelPayment, getStoredTransactions } from '../services/hyperswitchApi';
 
 interface SavedCard {
   id: string;
@@ -495,6 +495,32 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     }
   };
 
+  const handleConfirmGooglePay = async () => {
+    if (isSessionCancelled) return;
+
+    const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
+    if (!targetPaymentId) return;
+
+    setProcessingPayment(true);
+    setErrorMessage(null);
+
+    const { data } = await confirmGooglePayIntent(
+      targetPaymentId,
+      effectiveCaptureMethod,
+      grandTotalCents,
+      customer.email
+    );
+    setProcessingPayment(false);
+
+    if (data && (data.status === 'succeeded' || data.status === 'requires_capture')) {
+      sessionStorage.removeItem('active_checkout_intent_id');
+      sessionStorage.removeItem('active_checkout_intent_pending');
+      onPaymentSuccess(data);
+    } else {
+      setErrorMessage('Google Pay processing failed.');
+    }
+  };
+
   return (
     <div style={{ minHeight: 'calc(100vh - 240px)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
       
@@ -551,11 +577,23 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               <button
                 disabled={processingPayment || isSessionCancelled}
-                onClick={() => handleConfirmPaymentWithMethod('automatic')}
+                onClick={handleConfirmGooglePay}
                 className="btn-secondary"
-                style={{ padding: '0.55rem', fontSize: '0.82rem', background: '#000000', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                style={{
+                  padding: '0.55rem',
+                  fontSize: '0.82rem',
+                  background: '#000000',
+                  color: '#FFFFFF',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 700,
+                }}
               >
-                Apple Pay
+                <span style={{ fontSize: '0.92rem', color: '#4285F4', fontWeight: 800 }}>G</span>
+                <span>Pay</span>
               </button>
               <button
                 disabled={processingPayment || isSessionCancelled}
