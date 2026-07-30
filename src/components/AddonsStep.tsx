@@ -17,7 +17,6 @@ export const AddonsStep: React.FC<AddonsStepProps> = ({
   quantity,
   customer,
   captureMethod,
-  authType,
   onProceedToPayment,
   onBackToCart,
 }) => {
@@ -66,12 +65,8 @@ export const AddonsStep: React.FC<AddonsStepProps> = ({
           amountCents: baseCents,
           currency: 'USD',
           captureMethod,
-          authType,
-          customerId: `cust_${customer.email.replace(/[^a-zA-Z0-9]/g, '_') || 'guest'}`,
-          description: `SeatRush Order: ${item.eventName}`,
           customerName: customer.fullName,
           customerEmail: customer.email,
-          metadata: { has_vip_protection: false },
         });
 
         if (data && data.payment_id) {

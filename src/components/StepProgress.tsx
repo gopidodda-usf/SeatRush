@@ -3,10 +3,10 @@ import type { CheckoutStep } from '../types';
 
 interface StepProgressProps {
   currentStep: CheckoutStep;
-  onStepClick: (step: CheckoutStep) => void;
+  onStepClick?: (step: CheckoutStep) => void;
 }
 
-export const StepProgress: React.FC<StepProgressProps> = ({ currentStep, onStepClick }) => {
+export const StepProgress: React.FC<StepProgressProps> = ({ currentStep }) => {
   const steps = [
     { number: 1, label: 'Cart' },
     { number: 2, label: 'Payment' },
@@ -24,16 +24,13 @@ export const StepProgress: React.FC<StepProgressProps> = ({ currentStep, onStepC
         {steps.map((s, idx) => {
           const isActive = currentStep === s.number;
           const isCompleted = currentStep > s.number;
-          const isAccessible = s.number <= currentStep;
           const hasSegment = idx < steps.length - 1;
           const isSegmentCompleted = currentStep > s.number;
 
           return (
             <React.Fragment key={s.number}>
-              {/* Step Pill Button */}
-              <button
-                disabled={!isAccessible}
-                onClick={() => isAccessible && onStepClick(s.number as CheckoutStep)}
+              {/* Visual Step Pill (Non-Interactive Indicator) */}
+              <div
                 style={{
                   padding: '0.35rem 0.95rem',
                   fontSize: '0.75rem',
@@ -50,7 +47,8 @@ export const StepProgress: React.FC<StepProgressProps> = ({ currentStep, onStepC
                     ? '1px solid rgba(139, 92, 246, 0.5)'
                     : '1px solid var(--border-subtle)',
                   color: isActive ? '#FFFFFF' : isCompleted ? 'var(--accent-violet)' : 'var(--text-muted)',
-                  cursor: isAccessible ? 'pointer' : 'not-allowed',
+                  cursor: 'default',
+                  userSelect: 'none',
                   transition: 'all 0.2s ease',
                   boxShadow: isActive
                     ? '0 0 14px rgba(139, 92, 246, 0.6), 0 2px 10px rgba(0, 0, 0, 0.5)'
@@ -62,7 +60,7 @@ export const StepProgress: React.FC<StepProgressProps> = ({ currentStep, onStepC
                 }}
               >
                 {s.label}
-              </button>
+              </div>
 
               {/* Connecting Line Segment (STRICTLY in between adjacent pills - stops at outside boundary!) */}
               {hasSegment && (

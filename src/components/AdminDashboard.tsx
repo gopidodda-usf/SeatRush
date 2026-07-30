@@ -14,9 +14,16 @@ export const AdminDashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<AdminTransactionRecord[]>(getStoredTransactions());
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [expandedTxIds, setExpandedTxIds] = useState<Record<string, boolean>>({});
-  const [partialCaptureInput, setPartialCaptureInput] = useState<{ [id: string]: string }>({});
+  const [partialCaptureInput, setPartialCaptureInput] = useState<Record<string, string>>({});
+  const [partialCaptureErrors, setPartialCaptureErrors] = useState<Record<string, boolean>>({});
+  const [keepHoldCheckboxes, setKeepHoldCheckboxes] = useState<Record<string, boolean>>({});
   const [partialRefundInput, setPartialRefundInput] = useState<{ [id: string]: string }>({});
   const [incrementalInput, setIncrementalInput] = useState<{ [id: string]: string }>({});
+  const [expandedApiLogs, setExpandedApiLogs] = useState<Record<string, boolean>>({});
+
+  const toggleApiLogExpand = (logId: string) => {
+    setExpandedApiLogs((prev) => ({ ...prev, [logId]: !prev[logId] }));
+  };
 
   // Sync stored transactions live across browser tabs
   useEffect(() => {
@@ -72,19 +79,36 @@ export const AdminDashboard: React.FC = () => {
   // Admin Actions
   const handleFullCapture = async (tx: AdminTransactionRecord) => {
     setActionLoadingId(tx.payment_id);
-    await capturePayment(tx.payment_id, tx.total_amount_cents, false);
+    await capturePayment(tx.payment_id, tx.total_amount_cents, false, false);
+    setActionLoadingId(null);
+    setTransactions(getStoredTransactions());
+  };
+
+  const handleCaptureBalance = async (tx: AdminTransactionRecord) => {
+    const remainingCents = tx.authorized_hold_cents || (tx.total_amount_cents - tx.amount_captured_cents);
+    setActionLoadingId(tx.payment_id);
+    await capturePayment(tx.payment_id, remainingCents, false, false);
     setActionLoadingId(null);
     setTransactions(getStoredTransactions());
   };
 
   const handlePartialCapture = async (tx: AdminTransactionRecord) => {
     const inputVal = partialCaptureInput[tx.payment_id];
-    const dollars = parseFloat(inputVal || '150');
-    if (isNaN(dollars) || dollars <= 0) return;
+    if (!inputVal || !inputVal.trim()) {
+      setPartialCaptureErrors((prev) => ({ ...prev, [tx.payment_id]: true }));
+      return;
+    }
+    const dollars = parseFloat(inputVal);
+    if (isNaN(dollars) || dollars <= 0) {
+      setPartialCaptureErrors((prev) => ({ ...prev, [tx.payment_id]: true }));
+      return;
+    }
+    setPartialCaptureErrors((prev) => ({ ...prev, [tx.payment_id]: false }));
     const cents = Math.round(dollars * 100);
+    const keepHold = Boolean(keepHoldCheckboxes[tx.payment_id]);
 
     setActionLoadingId(tx.payment_id);
-    await capturePayment(tx.payment_id, cents, true);
+    await capturePayment(tx.payment_id, cents, true, keepHold);
     setActionLoadingId(null);
     setTransactions(getStoredTransactions());
   };
@@ -122,6 +146,18 @@ export const AdminDashboard: React.FC = () => {
     setTransactions(getStoredTransactions());
   };
 
+  const handleRefundBalance = async (tx: AdminTransactionRecord) => {
+    const totalCaptured = tx.amount_captured_cents || tx.total_amount_cents;
+    const prevRefunded = tx.amount_refunded_cents || 0;
+    const remainingRefundable = Math.max(0, totalCaptured - prevRefunded);
+    if (remainingRefundable <= 0) return;
+
+    setActionLoadingId(tx.payment_id);
+    await createRefund(tx.payment_id, remainingRefundable, 'Admin Refund Balance');
+    setActionLoadingId(null);
+    setTransactions(getStoredTransactions());
+  };
+
   const handlePartialRefund = async (tx: AdminTransactionRecord) => {
     const inputVal = partialRefundInput[tx.payment_id];
     const dollars = parseFloat(inputVal || '50');
@@ -131,6 +167,7 @@ export const AdminDashboard: React.FC = () => {
     setActionLoadingId(tx.payment_id);
     await createRefund(tx.payment_id, cents, 'Admin Partial Refund');
     setActionLoadingId(null);
+    setPartialRefundInput((prev) => ({ ...prev, [tx.payment_id]: '' }));
     setTransactions(getStoredTransactions());
   };
 
@@ -158,7 +195,8 @@ export const AdminDashboard: React.FC = () => {
       case 'refunded':
         return { background: 'rgba(156, 163, 175, 0.15)', color: '#9CA3AF', border: '1px solid rgba(156, 163, 175, 0.3)' };
       case 'cancelled':
-        return { background: 'rgba(244, 63, 94, 0.15)', color: '#F87171', border: '1px solid rgba(244, 63, 94, 0.3)' };
+      case 'failed':
+        return { background: 'rgba(239, 68, 68, 0.2)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.4)' };
       case 'requires_customer_action':
         return { background: 'rgba(6, 182, 212, 0.15)', color: '#22D3EE', border: '1px solid rgba(6, 182, 212, 0.3)' };
       default:
@@ -309,9 +347,9 @@ export const AdminDashboard: React.FC = () => {
                 <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.05em' }}>
                   <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Datetime</th>
                   <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Payment ID</th>
-                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Customer</th>
-                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Total Amount</th>
-                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Captured Amount</th>
+                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Amount</th>
+                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Captured</th>
+                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Refund</th>
                   <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Status</th>
                   <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}></th>
                 </tr>
@@ -345,33 +383,25 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                         </td>
 
-                        {/* Customer */}
-                        <td style={{ padding: '0.85rem 0.5rem', verticalAlign: 'middle', textAlign: 'center' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {tx.customer_name}
-                          </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            {tx.customer_email}
-                          </div>
-                        </td>
-
-                        {/* Total Amount (Center Aligned) */}
+                        {/* Amount (Center Aligned) */}
                         <td style={{ padding: '0.85rem 0.5rem', verticalAlign: 'middle', textAlign: 'center' }}>
                           <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                             ${(tx.total_amount_cents / 100).toFixed(2)}
                           </div>
                         </td>
 
-                        {/* Captured Amount (Center Aligned) */}
+                        {/* Captured (Center Aligned) */}
                         <td style={{ padding: '0.85rem 0.5rem', verticalAlign: 'middle', textAlign: 'center' }}>
                           <div style={{ fontWeight: 700, fontSize: '0.88rem', color: tx.amount_captured_cents > 0 ? '#34D399' : 'var(--text-muted)' }}>
                             ${(tx.amount_captured_cents / 100).toFixed(2)}
                           </div>
-                          {tx.amount_refunded_cents > 0 && (
-                            <div style={{ fontSize: '0.68rem', color: '#FBBF24', marginTop: '0.1rem' }}>
-                              Refunded: ${(tx.amount_refunded_cents / 100).toFixed(2)}
-                            </div>
-                          )}
+                        </td>
+
+                        {/* Refund (Center Aligned) */}
+                        <td style={{ padding: '0.85rem 0.5rem', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: tx.amount_refunded_cents > 0 ? '#FBBF24' : 'var(--text-muted)' }}>
+                            ${(tx.amount_refunded_cents / 100).toFixed(2)}
+                          </div>
                         </td>
 
                         {/* Status Badge (Center Aligned, Boxy 4px Border Radius) */}
@@ -414,10 +444,17 @@ export const AdminDashboard: React.FC = () => {
                         </td>
                       </tr>
 
-                      {/* Expanded Details Panel */}
-                      {isExpanded && (
-                        <tr style={{ background: 'rgba(139, 92, 246, 0.06)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                          <td colSpan={7} style={{ padding: '1.25rem' }}>
+                      {/* Expanded Details Panel with Smooth Accordion Transition */}
+                      <tr style={{ background: 'rgba(139, 92, 246, 0.06)' }}>
+                        <td colSpan={7} style={{ padding: 0 }}>
+                          <div style={{
+                            maxHeight: isExpanded ? '1000px' : '0px',
+                            opacity: isExpanded ? 1 : 0,
+                            overflow: 'hidden',
+                            transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease-in-out, padding 0.35s ease',
+                            padding: isExpanded ? '1.25rem' : '0 1.25rem',
+                            borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                          }}>
                             
                             {/* Operations Bar Floating Directly on Purple Background */}
                             <div style={{
@@ -432,35 +469,40 @@ export const AdminDashboard: React.FC = () => {
                               ) : (
                                 <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', width: '100%', gap: '0.85rem', whiteSpace: 'nowrap' }}>
                                   
-                                  {/* Actions for `requires_capture` state */}
+                                  {/* Actions for `requires_payment_method` / `requires_confirmation` / `requires_customer_action` */}
+                                  {(tx.status === 'requires_payment_method' || tx.status === 'requires_confirmation' || tx.status === 'requires_customer_action') && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                                      <button
+                                        onClick={() => handleVoidOrCancel(tx, 'Customer Session Cancelled')}
+                                        style={redBtnStyle}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Actions for `requires_capture` */}
                                   {tx.status === 'requires_capture' && (
                                     <>
-                                      {/* Left side: Pre-Auth Void & Auth Management */}
+                                      {/* Left side: Cancel & Auth Management */}
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                                         <button
                                           onClick={() => handleVoidOrCancel(tx, 'Merchant Pre-Auth Void')}
                                           style={redBtnStyle}
                                         >
-                                          Void Pre-Auth
+                                          Cancel
                                         </button>
 
                                         {/* Visual Divider */}
                                         <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.2rem' }} />
 
-                                        {/* Middle: Auth Management (Orange) */}
+                                        {/* Middle: Increase Auth & Extend Auth */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                          <button
-                                            onClick={() => handleExtendAuth(tx)}
-                                            style={orangeBtnStyle}
-                                          >
-                                            Extend Auth (+7d)
-                                          </button>
-
                                           <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                                             <span style={{ position: 'absolute', left: '0.55rem', fontSize: '0.78rem', color: 'var(--text-muted)', pointerEvents: 'none' }}>$</span>
                                             <input
                                               type="number"
-                                              placeholder="50.00"
+                                              placeholder=""
                                               value={incrementalInput[tx.payment_id] || ''}
                                               onChange={(e) => setIncrementalInput({ ...incrementalInput, [tx.payment_id]: e.target.value })}
                                               style={unifiedInputStyle}
@@ -469,13 +511,23 @@ export const AdminDashboard: React.FC = () => {
                                               onClick={() => handleIncrementalAuth(tx)}
                                               style={{ ...orangeBtnStyle, marginLeft: '0.35rem' }}
                                             >
-                                              + Add Auth Hold
+                                              Increase Auth
                                             </button>
                                           </div>
+
+                                          {/* Divider between Increase Auth and Extend Auth */}
+                                          <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.2rem' }} />
+
+                                          <button
+                                            onClick={() => handleExtendAuth(tx)}
+                                            style={orangeBtnStyle}
+                                          >
+                                            Extend Auth
+                                          </button>
                                         </div>
                                       </div>
 
-                                      {/* Right side: Captures (Green & Yellow) */}
+                                      {/* Right side: Full Capture & Partial Capture + Keep Hold Checkbox */}
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginLeft: 'auto' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                           <button
@@ -485,14 +537,96 @@ export const AdminDashboard: React.FC = () => {
                                             Full Capture (${(tx.total_amount_cents / 100).toFixed(2)})
                                           </button>
 
+                                          {/* Divider between Full Capture and Partial Capture field */}
+                                          <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.2rem' }} />
+
+                                          <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                                              <span style={{ position: 'absolute', left: '0.55rem', fontSize: '0.78rem', color: 'var(--text-muted)', pointerEvents: 'none' }}>$</span>
+                                              <input
+                                                type="number"
+                                                placeholder=""
+                                                value={partialCaptureInput[tx.payment_id] || ''}
+                                                onChange={(e) => {
+                                                  setPartialCaptureInput({ ...partialCaptureInput, [tx.payment_id]: e.target.value });
+                                                  if (partialCaptureErrors[tx.payment_id]) {
+                                                    setPartialCaptureErrors((prev) => ({ ...prev, [tx.payment_id]: false }));
+                                                  }
+                                                }}
+                                                style={{
+                                                  ...unifiedInputStyle,
+                                                  border: partialCaptureErrors[tx.payment_id] ? '1px solid #F43F5E' : unifiedInputStyle.border,
+                                                  boxShadow: partialCaptureErrors[tx.payment_id] ? '0 0 0 2px rgba(244, 63, 94, 0.4)' : 'none',
+                                                }}
+                                              />
+                                              <button
+                                                onClick={() => handlePartialCapture(tx)}
+                                                style={{ ...yellowBtnStyle, marginLeft: '0.35rem' }}
+                                              >
+                                                Partial Capture
+                                              </button>
+                                            </div>
+
+                                            {/* Divider between Partial Capture and Keep Hold */}
+                                            <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.5rem' }} />
+
+                                            {/* Keep Hold Checkbox moved to the right of Partial Capture button */}
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: '0.6rem', cursor: 'pointer' }}>
+                                              <input
+                                                type="checkbox"
+                                                checked={Boolean(keepHoldCheckboxes[tx.payment_id])}
+                                                onChange={(e) => setKeepHoldCheckboxes({ ...keepHoldCheckboxes, [tx.payment_id]: e.target.checked })}
+                                                style={{ cursor: 'pointer', accentColor: 'var(--accent-violet)' }}
+                                              />
+                                              Keep Hold
+                                            </label>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {/* Actions for `partially_captured_and_capturable` */}
+                                  {tx.status === 'partially_captured_and_capturable' && (
+                                    <>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                                        <button
+                                          onClick={() => handleVoidOrCancel(tx, 'Merchant Pre-Auth Void')}
+                                          style={redBtnStyle}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginLeft: 'auto' }}>
+                                        <button
+                                          onClick={() => handleCaptureBalance(tx)}
+                                          style={greenBtnStyle}
+                                        >
+                                          Capture Balance (${((tx.authorized_hold_cents || (tx.total_amount_cents - tx.amount_captured_cents)) / 100).toFixed(2)})
+                                        </button>
+
+                                        {/* Divider between Capture Balance and Partial Capture field */}
+                                        <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.2rem' }} />
+
+                                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                                           <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                                             <span style={{ position: 'absolute', left: '0.55rem', fontSize: '0.78rem', color: 'var(--text-muted)', pointerEvents: 'none' }}>$</span>
                                             <input
                                               type="number"
-                                              placeholder="150.00"
+                                              placeholder=""
                                               value={partialCaptureInput[tx.payment_id] || ''}
-                                              onChange={(e) => setPartialCaptureInput({ ...partialCaptureInput, [tx.payment_id]: e.target.value })}
-                                              style={unifiedInputStyle}
+                                              onChange={(e) => {
+                                                setPartialCaptureInput({ ...partialCaptureInput, [tx.payment_id]: e.target.value });
+                                                if (partialCaptureErrors[tx.payment_id]) {
+                                                  setPartialCaptureErrors((prev) => ({ ...prev, [tx.payment_id]: false }));
+                                                }
+                                              }}
+                                              style={{
+                                                ...unifiedInputStyle,
+                                                border: partialCaptureErrors[tx.payment_id] ? '1px solid #F43F5E' : unifiedInputStyle.border,
+                                                boxShadow: partialCaptureErrors[tx.payment_id] ? '0 0 0 2px rgba(244, 63, 94, 0.4)' : 'none',
+                                              }}
                                             />
                                             <button
                                               onClick={() => handlePartialCapture(tx)}
@@ -501,43 +635,68 @@ export const AdminDashboard: React.FC = () => {
                                               Partial Capture
                                             </button>
                                           </div>
+
+                                          {/* Divider between Partial Capture and Keep Hold */}
+                                          <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.5rem' }} />
+
+                                          {/* Keep Hold Checkbox moved to the right of Partial Capture button */}
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: '0.6rem', cursor: 'pointer' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(keepHoldCheckboxes[tx.payment_id])}
+                                              onChange={(e) => setKeepHoldCheckboxes({ ...keepHoldCheckboxes, [tx.payment_id]: e.target.checked })}
+                                              style={{ cursor: 'pointer', accentColor: 'var(--accent-violet)' }}
+                                            />
+                                            Keep Hold
+                                          </label>
                                         </div>
                                       </div>
                                     </>
                                   )}
 
-                                  {/* Actions for `succeeded`, `partially_captured`, `partially_captured_and_capturable`, `partially_refunded` */}
-                                  {(tx.status === 'succeeded' || tx.status === 'partially_captured' || tx.status === 'partially_captured_and_capturable' || tx.status === 'partially_refunded') && (
-                                    <>
-                                      {/* Left Side: Post-Capture Void */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                                        {tx.status !== 'partially_refunded' && (
+                                  {/* Actions for `succeeded` and `refunded` */}
+                                  {(tx.status === 'succeeded' || tx.status === 'refunded') && (() => {
+                                    const totalCaptured = tx.amount_captured_cents || tx.total_amount_cents;
+                                    const refunded = tx.amount_refunded_cents || 0;
+                                    const remainingRefundable = totalCaptured - refunded;
+
+                                    if (remainingRefundable <= 0) {
+                                      return (
+                                        <div style={{ fontSize: '0.78rem', color: '#9CA3AF', fontStyle: 'italic', fontWeight: 600 }}>
+                                          Refund Successful — Transaction Fully Refunded (${(totalCaptured / 100).toFixed(2)})
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginLeft: 'auto' }}>
+                                        {/* Full Refund Button (Green) - Shown when no refund has occurred yet */}
+                                        {refunded === 0 && (
                                           <button
-                                            onClick={() => handleVoidOrCancel(tx, 'Same-Day Post-Capture Void')}
-                                            style={redBtnStyle}
+                                            onClick={() => handleFullRefund(tx)}
+                                            style={greenBtnStyle}
                                           >
-                                            Cancel Post-Capture (Void)
+                                            Full Refund (${(totalCaptured / 100).toFixed(2)})
                                           </button>
                                         )}
-                                      </div>
 
-                                      {/* Right Side: Full Refund & Partial Refund */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginLeft: 'auto' }}>
-                                        <button
-                                          onClick={() => handleFullRefund(tx)}
-                                          style={greenBtnStyle}
-                                        >
-                                          Full Refund
-                                        </button>
+                                        {/* Refund Balance Button (Green) - Shown after a partial refund */}
+                                        {refunded > 0 && (
+                                          <button
+                                            onClick={() => handleRefundBalance(tx)}
+                                            style={greenBtnStyle}
+                                          >
+                                            Refund Balance (${(remainingRefundable / 100).toFixed(2)})
+                                          </button>
+                                        )}
 
-                                        {/* Visual Divider between Full Refund and Partial Refund */}
                                         <div style={{ width: '1px', height: '24px', background: 'rgba(255, 255, 255, 0.2)', margin: '0 0.2rem' }} />
 
                                         <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                                           <span style={{ position: 'absolute', left: '0.55rem', fontSize: '0.78rem', color: 'var(--text-muted)', pointerEvents: 'none' }}>$</span>
                                           <input
                                             type="number"
-                                            placeholder="50.00"
+                                            placeholder=""
                                             value={partialRefundInput[tx.payment_id] || ''}
                                             onChange={(e) => setPartialRefundInput({ ...partialRefundInput, [tx.payment_id]: e.target.value })}
                                             style={unifiedInputStyle}
@@ -550,31 +709,31 @@ export const AdminDashboard: React.FC = () => {
                                           </button>
                                         </div>
                                       </div>
-                                    </>
-                                  )}
+                                    );
+                                  })()}
 
-                                  {/* Actions for `requires_payment_method` / `requires_confirmation` / `requires_customer_action` (Red - Left Side) */}
-                                  {(tx.status === 'requires_payment_method' || tx.status === 'requires_confirmation' || tx.status === 'requires_customer_action') && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                                      <button
-                                        onClick={() => handleVoidOrCancel(tx, 'Customer Session Cancelled')}
-                                        style={redBtnStyle}
-                                      >
-                                        Cancel Session
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {/* Terminal States */}
-                                  {tx.status === 'refunded' && (
-                                    <div style={{ fontSize: '0.78rem', color: '#9CA3AF', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
-                                      100% Refunded to Customer
+                                  {/* Terminal / Ended States */}
+                                  {tx.status === 'partially_captured' && (
+                                    <div style={{ fontSize: '0.78rem', color: '#A78BFA', fontStyle: 'italic', fontWeight: 600 }}>
+                                      Payment Finished — Captured ${(tx.amount_captured_cents / 100).toFixed(2)}
                                     </div>
                                   )}
 
                                   {tx.status === 'cancelled' && (
                                     <div style={{ fontSize: '0.78rem', color: '#F87171', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
                                       Session / Authorization Cancelled
+                                    </div>
+                                  )}
+
+                                  {tx.status === 'failed' && (
+                                    <div style={{ fontSize: '0.78rem', color: '#F87171', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                      Transaction Failed
+                                    </div>
+                                  )}
+
+                                  {tx.status === 'expired' && (
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                      Transaction Expired
                                     </div>
                                   )}
 
@@ -593,54 +752,188 @@ export const AdminDashboard: React.FC = () => {
                                 Payment Sequence
                               </div>
 
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', borderLeft: '2px solid rgba(139, 92, 246, 0.4)', paddingLeft: '1rem' }}>
+                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '2px solid rgba(139, 92, 246, 0.4)', paddingLeft: '1rem' }}>
                                 {recentFirstHistory.map((evt) => {
                                   const parsed = formatHistoryLabel(evt.label);
                                   const evtStatusStyle = getStatusBadgeStyle(parsed.status);
+                                  const log = evt.api_log;
+                                  const isApiLogExpanded = log ? Boolean(expandedApiLogs[log.id]) : false;
+                                  const isSuccess = log ? log.responseStatus >= 200 && log.responseStatus < 300 : true;
 
                                   return (
-                                    <div key={evt.id} style={{
-                                      fontSize: '0.78rem',
-                                      display: 'grid',
-                                      gridTemplateColumns: '90px 200px 1fr',
-                                      alignItems: 'center',
-                                      gap: '1rem',
-                                      padding: '0.2rem 0',
-                                    }}>
-                                      
-                                      {/* Column 1: Datetime */}
-                                      <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                        {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    <React.Fragment key={evt.id}>
+                                      {/* Payment State Event Row */}
+                                      <div style={{
+                                        fontSize: '0.78rem',
+                                        display: 'grid',
+                                        gridTemplateColumns: '90px 200px 1fr',
+                                        alignItems: 'center',
+                                        gap: '1rem',
+                                      }}>
+                                        {/* Column 1: Datetime */}
+                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                          {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </div>
+
+                                        {/* Column 2: Status Badge */}
+                                        <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                                          <span style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            padding: '0.15rem 0.5rem',
+                                            borderRadius: '4px',
+                                            textTransform: 'uppercase',
+                                            ...evtStatusStyle,
+                                          }}>
+                                            {parsed.status}
+                                          </span>
+                                        </div>
+
+                                        {/* Column 3: Description Details */}
+                                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                          {parsed.isUpdated ? `Payment Updated — ${evt.details}` : evt.details}
+                                        </div>
                                       </div>
 
-                                      {/* Column 2: Status Badge Alone */}
-                                      <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                                        <span style={{
-                                          fontSize: '0.65rem',
-                                          fontWeight: 700,
-                                          padding: '0.15rem 0.5rem',
-                                          borderRadius: '4px',
-                                          textTransform: 'uppercase',
-                                          ...evtStatusStyle,
-                                        }}>
-                                          {parsed.status}
-                                        </span>
-                                      </div>
+                                      {/* Inline HTTP REST API Row (Sibling Row with Uniform Timeline Spacing) */}
+                                      {log && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                          <div
+                                            style={{
+                                              fontSize: '0.78rem',
+                                              display: 'grid',
+                                              gridTemplateColumns: '90px 200px 1fr',
+                                              alignItems: 'center',
+                                              gap: '1rem',
+                                              fontFamily: 'monospace',
+                                              cursor: 'default',
+                                            }}
+                                          >
+                                            {/* Column 1: Time */}
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                                              {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                            </div>
 
-                                      {/* Column 3: Description Details Column */}
-                                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                                        {parsed.isUpdated ? `Payment Updated — ${evt.details}` : evt.details}
-                                      </div>
+                                            {/* Column 2: Status Badge with Border/Background & Duration */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', whiteSpace: 'nowrap' }}>
+                                              <span style={{
+                                                fontSize: '0.65rem',
+                                                fontWeight: 700,
+                                                padding: '0.15rem 0.5rem',
+                                                borderRadius: '4px',
+                                                background: isSuccess ? 'rgba(52, 211, 153, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                                                color: isSuccess ? '#34D399' : '#FDA4AF',
+                                                border: `1px solid ${isSuccess ? 'rgba(52, 211, 153, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+                                                textTransform: 'uppercase',
+                                              }}>
+                                                {log.responseStatus}
+                                              </span>
+                                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                                                {log.durationMs}ms
+                                              </span>
+                                            </div>
 
-                                    </div>
+                                            {/* Column 3: POST /endpoint string & Clickable ▼ JSON Link ONLY */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span style={{ fontWeight: 800, color: 'var(--accent-cyan)' }}>
+                                                  {log.method}
+                                                </span>
+                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{log.endpoint}</span>
+                                              </div>
+                                              
+                                              {/* Clickable JSON Toggle Link ONLY */}
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  toggleApiLogExpand(log.id);
+                                                }}
+                                                style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  color: 'var(--accent-violet)',
+                                                  fontSize: '0.72rem',
+                                                  fontWeight: 600,
+                                                  cursor: 'pointer',
+                                                  padding: '0.1rem 0.4rem',
+                                                  fontFamily: 'monospace',
+                                                }}
+                                              >
+                                                {isApiLogExpanded ? '▲ JSON' : '▼ JSON'}
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Expanded Raw JSON Payload Viewer (Smooth Accordion Transition) */}
+                                          <div style={{
+                                            maxHeight: isApiLogExpanded ? '600px' : '0px',
+                                            opacity: isApiLogExpanded ? 1 : 0,
+                                            overflow: 'hidden',
+                                            transition: 'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-in-out, margin 0.3s ease',
+                                            margin: isApiLogExpanded ? '0.5rem 0 0.2rem 0' : '0',
+                                          }}>
+                                            <div style={{
+                                              padding: '0.85rem',
+                                              background: '#070A12',
+                                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                                              borderRadius: 'var(--radius-sm)',
+                                              fontSize: '0.75rem',
+                                              fontFamily: 'monospace',
+                                              display: 'grid',
+                                              gridTemplateColumns: '1fr 1fr',
+                                              gap: '0.85rem',
+                                            }}>
+                                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <div style={{ color: 'var(--accent-cyan)', fontWeight: 700, marginBottom: '0.3rem' }}>▶ Request Payload</div>
+                                                <pre style={{
+                                                  height: '200px',
+                                                  color: '#A5F3FC',
+                                                  background: 'rgba(0, 0, 0, 0.6)',
+                                                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                  borderRadius: '4px',
+                                                  padding: '0.6rem',
+                                                  overflowY: 'auto',
+                                                  overflowX: 'auto',
+                                                  whiteSpace: 'pre-wrap',
+                                                  wordBreak: 'break-word',
+                                                  margin: 0,
+                                                  boxSizing: 'border-box',
+                                                }}>
+                                                  {log.requestPayload ? JSON.stringify(log.requestPayload, null, 2) : 'No Request Payload'}
+                                                </pre>
+                                              </div>
+
+                                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <div style={{ color: isSuccess ? '#34D399' : '#FDA4AF', fontWeight: 700, marginBottom: '0.3rem' }}>◀ Response Payload</div>
+                                                <pre style={{
+                                                  height: '200px',
+                                                  color: '#CBD5E1',
+                                                  background: 'rgba(0, 0, 0, 0.6)',
+                                                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                  borderRadius: '4px',
+                                                  padding: '0.6rem',
+                                                  overflowY: 'auto',
+                                                  overflowX: 'auto',
+                                                  whiteSpace: 'pre-wrap',
+                                                  wordBreak: 'break-word',
+                                                  margin: 0,
+                                                  boxSizing: 'border-box',
+                                                }}>
+                                                  {JSON.stringify(log.responsePayload, null, 2)}
+                                                </pre>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </React.Fragment>
                                   );
                                 })}
                               </div>
                             </div>
-
-                          </td>
-                        </tr>
-                      )}
+                          </div>
+                        </td>
+                      </tr>
                     </React.Fragment>
                   );
                 })}

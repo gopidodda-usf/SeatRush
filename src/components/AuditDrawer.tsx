@@ -84,7 +84,7 @@ export const AuditDrawer: React.FC<AuditDrawerProps> = ({ isOpen, onClose, logs,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span style={{ fontWeight: 800, color: log.method === 'POST' ? 'var(--accent-cyan)' : '#C084FC' }}>
+                    <span style={{ fontWeight: 800, color: 'var(--accent-cyan)' }}>
                       {log.method}
                     </span>
                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{log.endpoint}</span>

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import type { CustomerDetails, TicketItem, HyperswitchPaymentIntent, HyperswitchRefund } from '../types';
-import { capturePayment, cancelPayment, createRefund } from '../services/hyperswitchApi';
 
 interface FulfillmentStepProps {
   item: TicketItem;
@@ -16,60 +15,14 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
   quantity,
   customer,
   paymentIntent,
-  onUpdatePaymentIntent,
   onReset,
 }) => {
-  const [operating, setOperating] = useState(false);
-  const [opMessage, setOpMessage] = useState<string | null>(null);
-  const [refundList, setRefundList] = useState<HyperswitchRefund[]>([]);
+  const [refundList] = useState<HyperswitchRefund[]>([]);
 
   const totalCents = (item.unitPriceCents + item.serviceFeeCents) * quantity;
   const grandTotal = totalCents / 100;
 
   const isCaptured = paymentIntent.status === 'succeeded';
-  const isRequiresCapture = paymentIntent.status === 'requires_capture';
-
-  // Manual Capture Trigger
-  const handleTriggerCapture = async () => {
-    setOperating(true);
-    setOpMessage(null);
-
-    const { data } = await capturePayment(paymentIntent.payment_id, totalCents);
-    setOperating(false);
-
-    if (data && data.status === 'succeeded') {
-      onUpdatePaymentIntent(data);
-      setOpMessage('Seller barcode verified! Funds captured via Hyperswitch.');
-    }
-  };
-
-  // Cancel Authorization Trigger
-  const handleTriggerCancel = async () => {
-    setOperating(true);
-    setOpMessage(null);
-
-    const { data } = await cancelPayment(paymentIntent.payment_id);
-    setOperating(false);
-
-    if (data && data.status === 'cancelled') {
-      onUpdatePaymentIntent(data);
-      setOpMessage('Authorization hold released via Hyperswitch.');
-    }
-  };
-
-  // Refund Trigger
-  const handleTriggerRefund = async (partialCents?: number) => {
-    setOperating(true);
-    setOpMessage(null);
-
-    const { data } = await createRefund(paymentIntent.payment_id, partialCents);
-    setOperating(false);
-
-    if (data) {
-      setRefundList((prev) => [data, ...prev]);
-      setOpMessage(`Refund of $${(data.amount / 100).toFixed(2)} created via Hyperswitch (${data.refund_id}).`);
-    }
-  };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: '1.25rem', alignItems: 'start' }}>
@@ -160,47 +113,6 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
             <button className="btn-secondary" style={{ flex: 1, padding: '0.6rem', fontSize: '0.78rem' }}>
               Download PDF Pass
             </button>
-          </div>
-        </div>
-
-        {/* Developer Post-Payment Operations Bar */}
-        <div className="glass-panel" style={{ padding: '1.15rem' }}>
-          <h4 style={{ fontSize: '0.92rem', fontFamily: 'var(--font-heading)', color: 'var(--accent-cyan)', marginBottom: '0.4rem' }}>
-            Hyperswitch Post-Payment Operations
-          </h4>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem' }}>
-            Test post-checkout API operations (capture holds, cancellations, refunds):
-          </p>
-
-          {opMessage && (
-            <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid var(--accent-cyan)', borderRadius: 'var(--radius-md)', color: 'var(--accent-cyan)', fontSize: '0.78rem', marginBottom: '0.85rem' }}>
-              {opMessage}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            {isRequiresCapture && (
-              <button disabled={operating} onClick={handleTriggerCapture} className="btn-primary" style={{ fontSize: '0.78rem', padding: '0.5rem 1rem' }}>
-                Execute Manual Capture (${grandTotal.toFixed(2)})
-              </button>
-            )}
-
-            {isRequiresCapture && (
-              <button disabled={operating} onClick={handleTriggerCancel} className="btn-secondary" style={{ fontSize: '0.78rem', color: '#FDA4AF', padding: '0.5rem 1rem' }}>
-                Cancel Authorization Hold
-              </button>
-            )}
-
-            {isCaptured && (
-              <>
-                <button disabled={operating} onClick={() => handleTriggerRefund()} className="btn-secondary" style={{ fontSize: '0.78rem', padding: '0.5rem 0.85rem' }}>
-                  Full Refund (${grandTotal.toFixed(2)})
-                </button>
-                <button disabled={operating} onClick={() => handleTriggerRefund(5000)} className="btn-secondary" style={{ fontSize: '0.78rem', padding: '0.5rem 0.85rem' }}>
-                  Partial $50.00 Refund
-                </button>
-              </>
-            )}
           </div>
         </div>
       </div>

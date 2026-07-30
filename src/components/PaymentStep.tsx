@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CustomerDetails, TicketItem, CaptureMethod, AuthenticationType, HyperswitchPaymentIntent, PaymentStatus } from '../types';
-import { createPaymentIntent, updatePaymentIntent, confirmPaymentIntent, confirmGooglePayIntent, attachPaymentMethodToIntent, cancelPayment, getStoredTransactions } from '../services/hyperswitchApi';
+import { createPaymentIntent, updatePaymentIntent, confirmPaymentIntent, confirmGooglePayIntent, cancelPayment, retrievePaymentIntent, getStoredTransactions } from '../services/hyperswitchApi';
 
 interface SavedCard {
   id: string;
@@ -8,6 +8,8 @@ interface SavedCard {
   last4: string;
   exp: string;
   holder: string;
+  rawCardNumber: string;
+  cvc?: string;
   isDefault?: boolean;
 }
 
@@ -30,6 +32,8 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     last4: '1111',
     exp: '03/30',
     holder: 'John Doe',
+    rawCardNumber: '4111111111111111',
+    cvc: '737',
     isDefault: true,
   },
   {
@@ -38,6 +42,8 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     last4: '0002',
     exp: '03/30',
     holder: 'Phil Morgan',
+    rawCardNumber: '4000000000000002',
+    cvc: '737',
     isDefault: false,
   },
   {
@@ -46,6 +52,8 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     last4: '0446',
     exp: '03/32',
     holder: 'Trisha Davis',
+    rawCardNumber: '4000003800000446',
+    cvc: '737',
     isDefault: false,
   },
 ];
@@ -178,7 +186,10 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             has_merch: newMerch,
             has_food: newFood,
           },
-          card: activeCard ? { last4: activeCard.last4, brand: activeCard.brand } : undefined,
+          lastChangedAddon: {
+            name: addonType.toUpperCase(),
+            action: checked ? 'Added' : 'Removed',
+          },
         });
       } finally {
         setIsUpdating(false);
@@ -186,9 +197,9 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     }
   };
 
-  // Saved Cards state - initialized with no card pre-selected (null)
+  // Saved Cards state - initialized with first card pre-selected by default
   const [savedCards, setSavedCards] = useState<SavedCard[]>(INITIAL_SAVED_CARDS);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>('card_visa_1111');
 
   // Add New Card modal state
   const [showAddCardModal, setShowAddCardModal] = useState(false);
@@ -196,6 +207,11 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
   const [newNumber, setNewNumber] = useState('');
   const [newExp, setNewExp] = useState('');
   const [newCvc, setNewCvc] = useState('');
+
+  // 3DS Tab Verification Modal state
+  const [show3DSTabModal, setShow3DSTabModal] = useState(false);
+  const [threeDsWarning, setThreeDsWarning] = useState<string | null>(null);
+  const [isChecking3DS, setIsChecking3DS] = useState(false);
 
   // Selected Card Info (null if no card has been clicked yet)
   const activeCard = savedCards.find((c) => c.id === selectedCardId) || null;
@@ -255,12 +271,8 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
           amountCents: baseCents,
           currency: 'USD',
           captureMethod: captureMethod || 'automatic',
-          authType,
-          customerId: `cust_${customer.email.replace(/[^a-zA-Z0-9]/g, '_') || 'guest'}`,
-          description: `SeatRush Order: ${item.eventName}`,
           customerName: customer.fullName,
           customerEmail: customer.email,
-          metadata: { has_vip_protection: false },
         });
 
         if (data && data.payment_id) {
@@ -404,6 +416,8 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       last4,
       exp: newExp || '12/29',
       holder: newHolder || 'Cardholder',
+      rawCardNumber: rawDigits,
+      cvc: newCvc || '737',
       isDefault: false,
     };
 
@@ -411,33 +425,40 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     setSelectedCardId(newCard.id);
     setShowAddCardModal(false);
 
-    const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
-    if (targetPaymentId) {
-      attachPaymentMethodToIntent(targetPaymentId, { last4: newCard.last4, brand: newCard.brand });
-    }
-
     setNewHolder('');
     setNewNumber('');
     setNewExp('');
     setNewCvc('');
   };
 
-  const handleSelectCard = async (card: SavedCard) => {
+  const handleSelectCard = (card: SavedCard) => {
     if (isSessionCancelled) return;
     setSelectedCardId(card.id);
-    const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
-    if (targetPaymentId) {
-      await updatePaymentIntent(targetPaymentId, {
+  };
+
+  const recreateIntentOnFailure = async (method: CaptureMethod) => {
+    try {
+      const metadata: Record<string, boolean> = {
+        has_vip_protection: hasVipProtection,
+        has_parking: hasParking,
+        has_merch: hasMerch,
+        has_food: hasFood,
+      };
+      const { data: newIntent } = await createPaymentIntent({
         amountCents: grandTotalCents,
-        captureMethod,
-        card: { last4: card.last4, brand: card.brand, holderName: card.holder },
-        metadata: {
-          has_vip_protection: hasVipProtection,
-          has_parking: hasParking,
-          has_merch: hasMerch,
-          has_food: hasFood,
-        },
+        currency: 'USD',
+        captureMethod: method,
+        authType,
+        customerName: customer.fullName,
+        customerEmail: customer.email,
+        metadata,
       });
+      if (newIntent?.payment_id) {
+        setPaymentIntent(newIntent);
+        sessionStorage.setItem('active_checkout_intent_id', newIntent.payment_id);
+      }
+    } catch (err) {
+      console.error('Failed to recreate payment intent on failure:', err);
     }
   };
 
@@ -458,11 +479,19 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       return;
     }
 
+    // Step 3a: First hit POST /payments/{payment_id} to attach the selected payment method
+    if (activeCard) {
+      await updatePaymentIntent(targetPaymentId, {
+        card: { last4: activeCard.last4, brand: activeCard.brand, holderName: activeCard.holder, rawCardNumber: activeCard.rawCardNumber, exp: activeCard.exp, cvc: activeCard.cvc },
+      });
+    }
+
+    // Step 3b: Automatically hit POST /payments/{payment_id}/confirm to execute confirmation
     const { data } = await confirmPaymentIntent(
       targetPaymentId,
       method,
       grandTotalCents,
-      activeCard ? { last4: activeCard.last4, brand: activeCard.brand, holderName: activeCard.holder } : undefined
+      activeCard ? { last4: activeCard.last4, brand: activeCard.brand, holderName: activeCard.holder, rawCardNumber: activeCard.rawCardNumber, exp: activeCard.exp, cvc: activeCard.cvc } : undefined
     );
     setProcessingPayment(false);
 
@@ -470,8 +499,51 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       sessionStorage.removeItem('active_checkout_intent_id');
       sessionStorage.removeItem('active_checkout_intent_pending');
       onPaymentSuccess(data);
+    } else if (data && data.status === 'requires_customer_action') {
+      const redirectUrl = data.next_action?.redirect_to_url || data.next_action?.url || (data.next_action as any)?.image_data_url || 'http://localhost:8080';
+      if (redirectUrl) {
+        window.open(redirectUrl, '_blank');
+      }
+      setThreeDsWarning(null);
+      setShow3DSTabModal(true);
     } else {
       setErrorMessage(data?.error_message || 'Payment processing failed.');
+      await recreateIntentOnFailure(method);
+    }
+  };
+
+  const handleCancel3DSPayment = async () => {
+    const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
+    if (targetPaymentId) {
+      await cancelPayment(targetPaymentId);
+    }
+    sessionStorage.removeItem('active_checkout_intent_id');
+    sessionStorage.removeItem('active_checkout_intent_pending');
+    setShow3DSTabModal(false);
+    onBack();
+  };
+
+  const handleVerify3DSStatus = async (method: CaptureMethod) => {
+    const targetPaymentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
+    if (!targetPaymentId) return;
+
+    setIsChecking3DS(true);
+    setThreeDsWarning(null);
+
+    const { data } = await retrievePaymentIntent(targetPaymentId);
+    setIsChecking3DS(false);
+
+    if (data && (data.status === 'succeeded' || data.status === 'requires_capture')) {
+      sessionStorage.removeItem('active_checkout_intent_id');
+      sessionStorage.removeItem('active_checkout_intent_pending');
+      setShow3DSTabModal(false);
+      onPaymentSuccess(data);
+    } else if (data && data.status === 'requires_customer_action') {
+      setThreeDsWarning('Please complete 3DS authentication in the opened tab first, then click YES below.');
+    } else {
+      setShow3DSTabModal(false);
+      setErrorMessage(data?.error_message || '3DS Authentication failed or was rejected.');
+      await recreateIntentOnFailure(method);
     }
   };
 
@@ -492,6 +564,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       onPaymentSuccess(data);
     } else {
       setErrorMessage('3DS Verification failed.');
+      await recreateIntentOnFailure('automatic');
     }
   };
 
@@ -518,6 +591,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       onPaymentSuccess(data);
     } else {
       setErrorMessage('Google Pay processing failed.');
+      await recreateIntentOnFailure(effectiveCaptureMethod);
     }
   };
 
@@ -577,7 +651,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               <button
                 disabled={processingPayment || isSessionCancelled}
-                onClick={handleConfirmGooglePay}
+                onClick={() => handleConfirmGooglePay()}
                 className="btn-secondary"
                 style={{
                   padding: '0.55rem',
@@ -590,6 +664,8 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                   justifyContent: 'center',
                   gap: '0.35rem',
                   fontWeight: 700,
+                  opacity: isSessionCancelled ? 0.5 : 1,
+                  cursor: isSessionCancelled ? 'default' : 'pointer',
                 }}
               >
                 <span style={{ fontSize: '0.92rem', color: '#4285F4', fontWeight: 800 }}>G</span>
@@ -599,7 +675,15 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                 disabled={processingPayment || isSessionCancelled}
                 onClick={() => handleConfirmPaymentWithMethod('automatic')}
                 className="btn-secondary"
-                style={{ padding: '0.55rem', fontSize: '0.82rem', background: '#003087', color: '#FFFFFF', border: 'none' }}
+                style={{ 
+                  padding: '0.55rem', 
+                  fontSize: '0.82rem', 
+                  background: '#003087', 
+                  color: '#FFFFFF', 
+                  border: 'none',
+                  opacity: isSessionCancelled ? 0.5 : 1,
+                  cursor: isSessionCancelled ? 'default' : 'pointer',
+                }}
               >
                 PayPal
               </button>
@@ -631,7 +715,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                       background: isSelected ? 'rgba(139, 92, 246, 0.12)' : 'rgba(9, 7, 16, 0.45)',
                       border: isSelected ? '1.5px solid var(--accent-violet)' : '1px solid var(--border-subtle)',
                       borderRadius: 'var(--radius-md)',
-                      cursor: 'pointer',
+                      cursor: isSessionCancelled ? 'default' : 'pointer',
                       transition: 'all 0.2s ease',
                       boxShadow: isSelected ? '0 0 14px rgba(139, 92, 246, 0.2)' : 'none',
                     }}
@@ -657,8 +741,18 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                     </div>
 
                     {card.isDefault && (
-                      <span className="btn-secondary" style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', background: 'rgba(255, 255, 255, 0.08)' }}>
-                        DEFAULT
+                      <span style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        color: 'var(--text-muted)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px',
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
+                      }}>
+                        Default
                       </span>
                     )}
                   </div>
@@ -827,6 +921,66 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
+        {/* 3DS Tab Verification Modal */}
+        {show3DSTabModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}>
+            <div className="glass-panel" style={{ width: '420px', padding: '1.5rem', textAlign: 'center', borderColor: 'var(--accent-violet)' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔐</div>
+              <h3 style={{ fontSize: '1.15rem', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+                Did you finish 3DS authentication?
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1.1rem', lineHeight: 1.4 }}>
+                We opened the 3D Secure authentication page in a new browser tab. Please complete or reject the payment in that tab, then click YES below.
+              </p>
+
+              {threeDsWarning && (
+                <div style={{
+                  padding: '0.65rem 0.85rem',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: '#FBBF24',
+                  fontSize: '0.75rem',
+                  marginBottom: '1rem',
+                  textAlign: 'left',
+                }}>
+                  ⚠️ {threeDsWarning}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={handleCancel3DSPayment}
+                  className="btn-secondary"
+                  style={{ flex: 1, padding: '0.7rem', fontSize: '0.82rem' }}
+                >
+                  Cancel Payment
+                </button>
+                <button
+                  type="button"
+                  disabled={isChecking3DS}
+                  onClick={() => handleVerify3DSStatus(effectiveCaptureMethod)}
+                  className="btn-primary"
+                  style={{ flex: 1, padding: '0.7rem', fontSize: '0.82rem' }}
+                >
+                  {isChecking3DS ? 'Checking...' : 'YES, I Finished'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 3DS Challenge Modal */}
         {show3DSModal && (
           <div style={{
@@ -882,7 +1036,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                 <button onClick={() => setShowAddCardModal(false)} className="btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem' }}>✕</button>
               </div>
 
-              <form onSubmit={handleAddNewCardSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 <div>
                   <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
                     Name on Card
@@ -890,6 +1044,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                   <input
                     type="text"
                     required
+                    autoComplete="one-time-code"
                     value={newHolder}
                     onChange={(e) => setNewHolder(e.target.value)}
                     className="input-field"
@@ -913,6 +1068,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                     <input
                       type="text"
                       required
+                      autoComplete="one-time-code"
                       value={newNumber}
                       onChange={handleCardNumberChange}
                       className="input-field"
@@ -948,6 +1104,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                       <input
                         type="text"
                         required
+                        autoComplete="one-time-code"
                         value={newExp}
                         onChange={handleExpChange}
                         className="input-field"
@@ -985,6 +1142,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                       <input
                         type="text"
                         required
+                        autoComplete="one-time-code"
                         maxLength={maxCvvLength}
                         value={newCvc}
                         onChange={handleCvcChange}
@@ -1009,14 +1167,14 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-                  <button type="submit" className="btn-primary" style={{ flex: 1, padding: '0.7rem', fontSize: '0.85rem' }}>
+                  <button type="button" onClick={handleAddNewCardSubmit as any} className="btn-primary" style={{ flex: 1, padding: '0.7rem', fontSize: '0.85rem' }}>
                     Save Card
                   </button>
                   <button type="button" onClick={() => setShowAddCardModal(false)} className="btn-secondary" style={{ flex: 1, padding: '0.7rem', fontSize: '0.85rem' }}>
                     Cancel
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         )}
@@ -1047,18 +1205,21 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
         <div>
           <button
             disabled={!selectedCardId || processingPayment || isSessionCancelled}
-            onClick={() => handleConfirmPaymentWithMethod(effectiveCaptureMethod)}
+            onClick={() => {
+              if (isSessionCancelled) return;
+              handleConfirmPaymentWithMethod(effectiveCaptureMethod);
+            }}
             className="btn-primary"
             style={{
               width: '100%',
               padding: '0.8rem 1.25rem',
               fontSize: '0.88rem',
               whiteSpace: 'nowrap',
-              opacity: !selectedCardId ? 0.5 : 1,
-              cursor: !selectedCardId ? 'not-allowed' : 'pointer',
+              opacity: (!selectedCardId || isSessionCancelled) ? 0.5 : 1,
+              cursor: (!selectedCardId || isSessionCancelled) ? 'default' : 'pointer',
             }}
           >
-            {processingPayment ? 'Authorizing...' : 'Complete Order'}
+            {processingPayment ? 'Authorizing...' : isSessionCancelled ? 'Session Cancelled' : 'Complete Order'}
           </button>
         </div>
       </div>

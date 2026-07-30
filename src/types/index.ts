@@ -6,6 +6,8 @@ export type PaymentStatus =
   | 'processing'
   | 'succeeded'
   | 'cancelled'
+  | 'failed'
+  | 'expired'
   | 'partially_captured'
   | 'partially_captured_and_capturable'
   | 'partially_refunded'
@@ -56,6 +58,12 @@ export interface HyperswitchPaymentIntent {
   error_message?: string;
   cancellation_reason?: string;
   authorization_extended_days?: number;
+  next_action?: {
+    type?: string;
+    redirect_to_url?: string;
+    url?: string;
+    image_data_url?: string;
+  };
 }
 
 export interface HyperswitchRefund {
@@ -86,6 +94,7 @@ export interface PaymentStatusEvent {
   label: string;
   details?: string;
   amount_cents?: number;
+  api_log?: ApiAuditLog;
 }
 
 export interface AdminTransactionRecord {
