@@ -347,7 +347,7 @@ export const EventDetailsPage: React.FC<EventDetailsPageProps> = ({
             )}
 
             <span style={{ position: 'relative', zIndex: 1 }}>
-              {isAdding ? 'Adding Tickets...' : isAdded ? 'Go to Cart ➔' : 'Add to Cart'}
+              {isAdding ? 'Adding Tickets...' : isAdded ? 'Go to Cart ↗' : 'Add to Cart'}
             </span>
           </button>
         </div>

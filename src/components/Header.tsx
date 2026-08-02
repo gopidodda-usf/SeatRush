@@ -137,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
               fontWeight: 600,
             }}
           >
-            {isCurrentlyAdmin ? 'Storefront ➔' : 'Admin ➔'}
+            {isCurrentlyAdmin ? 'Storefront ↗' : 'Admin ↗'}
           </button>
 
           {/* 2. APIs Button (Grey) */}
