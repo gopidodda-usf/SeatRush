@@ -46,24 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.65rem' }}
             onClick={() => onNavigateView ? onNavigateView('home') : onResetOrder()}
           >
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #8B5CF6 0%, #F43F5E 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 900,
-              color: '#FFFFFF',
-              fontSize: '1.05rem',
-              boxShadow: '0 3px 12px rgba(139, 92, 246, 0.4)',
-            }}>
-              S
-            </div>
+            <img src="/favicon.svg" alt="SeatRush S Logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
             <div>
               <span style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'var(--font-heading)' }}>
-                Seat<span style={{ color: 'var(--accent-coral)' }}>Rush</span>
+                Seat<span style={{ color: 'var(--accent-violet)' }}>Rush</span>
               </span>
             </div>
           </div>
