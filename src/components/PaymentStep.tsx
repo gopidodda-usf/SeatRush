@@ -14,8 +14,9 @@ interface SavedCard {
 }
 
 interface PaymentStepProps {
-  item: TicketItem;
-  quantity: number;
+  items?: TicketItem[];
+  item?: TicketItem;
+  quantity?: number;
   customer: CustomerDetails;
   captureMethod: CaptureMethod;
   authType: AuthenticationType;
@@ -57,6 +58,22 @@ const INITIAL_SAVED_CARDS: SavedCard[] = [
     isDefault: false,
   },
 ];
+
+export function isCardExpired(exp: string): boolean {
+  if (!exp || !exp.includes('/')) return true;
+  const parts = exp.split('/');
+  const month = parseInt(parts[0], 10);
+  const year2Digit = parseInt(parts[1], 10);
+  if (isNaN(month) || isNaN(year2Digit) || month < 1 || month > 12) return true;
+
+  const now = new Date();
+  const currentYear2Digit = now.getFullYear() % 100;
+  const currentMonth = now.getMonth() + 1;
+
+  if (year2Digit < currentYear2Digit) return true;
+  if (year2Digit === currentYear2Digit && month < currentMonth) return true;
+  return false;
+}
 
 // Luhn Algorithm Verification for Credit/Debit Cards
 export function validateLuhn(cardNumber: string): boolean {
@@ -118,8 +135,9 @@ export function detectCardBrand(number: string): 'visa' | 'mastercard' | 'amex' 
 }
 
 export const PaymentStep: React.FC<PaymentStepProps> = ({
+  items,
   item,
-  quantity,
+  quantity = 1,
   customer,
   captureMethod,
   authType,
@@ -138,11 +156,20 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
   const [hasFood, setHasFood] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const cartList: TicketItem[] = (items && items.length > 0)
+    ? items
+    : item
+    ? [{ ...item, quantity }]
+    : [];
+
   const activeIntentId = paymentIntent?.payment_id || sessionStorage.getItem('active_checkout_intent_id');
   const storedTx = getStoredTransactions().find((t) => t.payment_id === activeIntentId);
   const effectiveCaptureMethod = storedTx?.capture_method || captureMethod || 'automatic';
 
-  const baseCents = (item.unitPriceCents + item.serviceFeeCents) * quantity;
+  const ticketsSubtotalCents = cartList.reduce((sum, i) => sum + i.unitPriceCents * i.quantity, 0);
+  const serviceFeesCents = cartList.reduce((sum, i) => sum + i.serviceFeeCents * i.quantity, 0);
+  const baseCents = ticketsSubtotalCents + serviceFeesCents;
+
   const vipCents = hasVipProtection ? 1500 : 0;
   const parkingCents = hasParking ? 2500 : 0;
   const merchCents = hasMerch ? 1000 : 0;
@@ -577,11 +604,68 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     setProcessingPayment(true);
     setErrorMessage(null);
 
+    let gpayDetails = { last4: '1111', cardNetwork: 'VISA', token: 'example_gpay_token' };
+
+    // Invoke official Google Pay SDK in TEST environment if available in browser
+    if (typeof window !== 'undefined' && (window as any).google?.payments?.api) {
+      try {
+        const paymentsClient = new (window as any).google.payments.api.PaymentsClient({ environment: 'TEST' });
+        const paymentDataRequest = {
+          apiVersion: 2,
+          apiVersionMinor: 0,
+          allowedPaymentMethods: [
+            {
+              type: 'CARD',
+              parameters: {
+                allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+                allowedCardNetworks: ['AMEX', 'DISCOVER', 'JCB', 'MASTERCARD', 'VISA'],
+              },
+              tokenizationSpecification: {
+                type: 'PAYMENT_GATEWAY',
+                parameters: {
+                  gateway: 'example',
+                  gatewayMerchantId: 'exampleGatewayMerchantId',
+                },
+              },
+            },
+          ],
+          merchantInfo: {
+            merchantName: 'SeatRush Tickets',
+          },
+          transactionInfo: {
+            totalPriceStatus: 'FINAL',
+            totalPriceLabel: 'Total',
+            totalPrice: (grandTotalCents / 100).toFixed(2),
+            currencyCode: 'USD',
+            countryCode: 'US',
+          },
+        };
+
+        const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
+        if (paymentData && paymentData.paymentMethodData) {
+          const info = paymentData.paymentMethodData.info;
+          const token = paymentData.paymentMethodData.tokenizationData?.token;
+          gpayDetails = {
+            last4: info?.cardDetails || '1111',
+            cardNetwork: info?.cardNetwork || 'VISA',
+            token: token || 'gpay_token_allowlist',
+          };
+        }
+      } catch (err: any) {
+        // User closed or cancelled GPay sheet
+        if (err?.statusCode === 'CANCELED') {
+          setProcessingPayment(false);
+          return;
+        }
+      }
+    }
+
     const { data } = await confirmGooglePayIntent(
       targetPaymentId,
       effectiveCaptureMethod,
       grandTotalCents,
-      customer.email
+      customer.email,
+      gpayDetails
     );
     setProcessingPayment(false);
 
@@ -589,8 +673,15 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       sessionStorage.removeItem('active_checkout_intent_id');
       sessionStorage.removeItem('active_checkout_intent_pending');
       onPaymentSuccess(data);
+    } else if (data && data.status === 'requires_customer_action') {
+      const redirectUrl = data.next_action?.redirect_to_url || data.next_action?.url || (data.next_action as any)?.image_data_url || 'http://localhost:8080';
+      if (redirectUrl) {
+        window.open(redirectUrl, '_blank');
+      }
+      setThreeDsWarning(null);
+      setShow3DSTabModal(true);
     } else {
-      setErrorMessage('Google Pay processing failed.');
+      setErrorMessage(data?.error_message || 'Google Pay processing failed.');
       await recreateIntentOnFailure(effectiveCaptureMethod);
     }
   };
@@ -792,12 +883,23 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             <h3 style={{ fontSize: '1rem', fontFamily: 'var(--font-heading)', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
               Order Summary
             </h3>
-            <h4 style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
-              {item.eventName}
-            </h4>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>
-              {quantity}x Tickets • {item.venue}
-            </p>
+
+            {/* List of Cart Ticket Items */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '0.85rem' }}>
+              {cartList.map((cItem) => (
+                <div key={cItem.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.5rem' }}>
+                  <h4 style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '0.15rem', fontFamily: 'var(--font-heading)' }}>
+                    {cItem.eventName}
+                  </h4>
+                  <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{cItem.quantity}x {cItem.quantity === 1 ? 'Ticket' : 'Tickets'}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                      ${(((cItem.unitPriceCents + cItem.serviceFeeCents) * cItem.quantity) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
 
             {/* Interactive Add-ons Section */}
             <div style={{
@@ -864,15 +966,17 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
             </div>
 
             <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.78rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '1rem', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                <span>Tickets</span>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{quantity} x ${(item.unitPriceCents / 100).toFixed(2)}</span>
-                <span style={{ fontWeight: 600, textAlign: 'right', minWidth: '55px' }}>${((item.unitPriceCents * quantity) / 100).toFixed(2)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                <span>Tickets Subtotal</span>
+                <span style={{ fontWeight: 600, textAlign: 'right', color: 'var(--text-primary)' }}>
+                  ${(ticketsSubtotalCents / 100).toFixed(2)}
+                </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '1rem', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                <span>Service Fee</span>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{quantity} x ${(item.serviceFeeCents / 100).toFixed(2)}</span>
-                <span style={{ fontWeight: 600, textAlign: 'right', minWidth: '55px' }}>${((item.serviceFeeCents * quantity) / 100).toFixed(2)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                <span>Service Fees</span>
+                <span style={{ fontWeight: 600, textAlign: 'right', color: 'var(--text-primary)' }}>
+                  ${(serviceFeesCents / 100).toFixed(2)}
+                </span>
               </div>
 
               {hasVipProtection && (

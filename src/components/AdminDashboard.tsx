@@ -752,12 +752,13 @@ export const AdminDashboard: React.FC = () => {
                                 Payment Sequence
                               </div>
 
-                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '2px solid rgba(139, 92, 246, 0.4)', paddingLeft: '1rem' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '2px solid rgba(139, 92, 246, 0.4)', paddingLeft: '1rem' }}>
                                 {recentFirstHistory.map((evt) => {
                                   const parsed = formatHistoryLabel(evt.label);
                                   const evtStatusStyle = getStatusBadgeStyle(parsed.status);
                                   const log = evt.api_log;
-                                  const isApiLogExpanded = log ? Boolean(expandedApiLogs[log.id]) : false;
+                                  const logKey = log ? `${evt.id}_${log.id}` : '';
+                                  const isApiLogExpanded = log ? Boolean(expandedApiLogs[logKey]) : false;
                                   const isSuccess = log ? log.responseStatus >= 200 && log.responseStatus < 300 : true;
 
                                   return (
@@ -846,7 +847,7 @@ export const AdminDashboard: React.FC = () => {
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  toggleApiLogExpand(log.id);
+                                                  toggleApiLogExpand(logKey);
                                                 }}
                                                 style={{
                                                   background: 'none',

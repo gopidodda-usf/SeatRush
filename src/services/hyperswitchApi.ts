@@ -33,24 +33,6 @@ function saveApiAuditLog(log: ApiAuditLog) {
     localStorage.setItem(LOGS_KEY, JSON.stringify(trimmed));
     window.dispatchEvent(new Event('storage'));
 
-    // Attach 400/500 API logs to transaction history timeline without creating synthetic status terms
-    if (log.responseStatus >= 400 || log.responseStatus === 0) {
-      const match = log.endpoint.match(/\/payments\/([A-Za-z0-9_]+)/);
-      const paymentId = match ? match[1] : (log.requestPayload?.payment_id || log.responsePayload?.payment_id);
-      if (paymentId) {
-        const storedTxs = getStoredTransactions();
-        const tx = storedTxs.find((t) => t.payment_id === paymentId);
-        if (tx) {
-          const currentStatus = (log.responsePayload && log.responsePayload.status) ? log.responsePayload.status as PaymentStatus : tx.status;
-          updateStoredTransactionStatus(paymentId, {
-            status: currentStatus,
-            historyLabel: currentStatus,
-            historyDetails: `API Call Executed (${log.method} ${log.endpoint})`,
-            apiLog: log,
-          });
-        }
-      }
-    }
   } catch (err) {
     console.error('Failed to save audit log to localStorage:', err);
   }
@@ -476,22 +458,29 @@ export async function confirmGooglePayIntent(
   paymentId: string,
   captureMethod: CaptureMethod = 'automatic',
   amountCents: number = 27500,
-  customerEmail?: string
+  customerEmail?: string,
+  gpayDetails?: { last4?: string; cardNetwork?: string; token?: string }
 ): Promise<{ data: HyperswitchPaymentIntent; log: ApiAuditLog }> {
+  const cardNetwork = (gpayDetails?.cardNetwork || 'VISA').toUpperCase();
+  const last4 = gpayDetails?.last4 || '1111';
+
   const body: any = {
     payment_method: 'wallet',
     payment_method_type: 'google_pay',
     payment_method_data: {
       wallet: {
         google_pay: {
-          last4: '1111',
-          card_network: 'VISA',
           type: 'CARD',
           description: 'Google Pay Visa Card',
-          card_exp_month: '03',
-          card_exp_year: '30',
-          auth_code: '003225',
           email: customerEmail || 'john.doe@example.com',
+          info: {
+            card_network: cardNetwork,
+            card_details: last4,
+          },
+          tokenization_data: {
+            type: 'PAYMENT_GATEWAY',
+            token: gpayDetails?.token || 'example_token',
+          },
         },
       },
     },

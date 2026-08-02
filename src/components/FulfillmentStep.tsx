@@ -2,32 +2,50 @@ import React, { useState } from 'react';
 import type { CustomerDetails, TicketItem, HyperswitchPaymentIntent, HyperswitchRefund } from '../types';
 
 interface FulfillmentStepProps {
-  item: TicketItem;
-  quantity: number;
+  items?: TicketItem[];
+  item?: TicketItem;
+  quantity?: number;
   customer: CustomerDetails;
   paymentIntent: HyperswitchPaymentIntent;
   onUpdatePaymentIntent: (updated: HyperswitchPaymentIntent) => void;
   onReset: () => void;
+  onNavigateHome?: () => void;
 }
 
 export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
+  items,
   item,
-  quantity,
+  quantity = 1,
   customer,
   paymentIntent,
   onReset,
+  onNavigateHome,
 }) => {
   const [refundList] = useState<HyperswitchRefund[]>([]);
 
-  const totalCents = (item.unitPriceCents + item.serviceFeeCents) * quantity;
-  const grandTotal = totalCents / 100;
+  const cartList: TicketItem[] = (items && items.length > 0)
+    ? items
+    : item
+    ? [{ ...item, quantity }]
+    : [];
+
+  const ticketsSubtotalCents = cartList.reduce((sum, i) => sum + i.unitPriceCents * i.quantity, 0);
+  const serviceFeesCents = cartList.reduce((sum, i) => sum + i.serviceFeeCents * i.quantity, 0);
+  const grandTotal = (ticketsSubtotalCents + serviceFeesCents) / 100;
 
   const isCaptured = paymentIntent.status === 'succeeded';
+
+  const handleExploreMoreClick = () => {
+    onReset();
+    if (onNavigateHome) {
+      onNavigateHome();
+    }
+  };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: '1.25rem', alignItems: 'start' }}>
       
-      {/* Left Column: Order Confirmation & Ticket Pass */}
+      {/* Left Column: Order Confirmation & Ticket Passes */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         
         {/* Banner */}
@@ -64,57 +82,60 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
           </div>
         </div>
 
-        {/* Stadium Ticket Pass Card with Notch Edges */}
-        <div className="glass-panel ticket-notch-card" style={{
-          background: 'linear-gradient(180deg, #111827 0%, #070A11 100%)',
-          padding: '1.35rem',
-          borderRadius: 'var(--radius-xl)',
-          border: '1px solid var(--border-glow)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-            <div>
-              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-cyan)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                US Marketplace Pass
-              </span>
-              <h3 style={{ fontSize: '1.15rem', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)' }}>
-                {item.eventName}
-              </h3>
-            </div>
-            <span className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.25rem 0.65rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--accent-cyan)' }}>
-              MOBILE TICKET
-            </span>
-          </div>
-
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.15rem' }}>
-            {item.venue} • {item.date} @ {item.time}
-          </p>
-
-          {/* Ticket Metadata Barcode Banner */}
-          <div style={{
-            background: '#FFFFFF',
-            padding: '1.15rem',
-            borderRadius: 'var(--radius-md)',
-            textAlign: 'center',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        {/* Stadium Ticket Pass Cards for each purchased item */}
+        {cartList.map((ticket, idx) => (
+          <div key={ticket.id || idx} className="glass-panel ticket-notch-card" style={{
+            background: 'linear-gradient(180deg, #111827 0%, #070A11 100%)',
+            padding: '1.35rem',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--border-glow)',
           }}>
-            <div style={{ fontFamily: 'monospace', color: '#0F172A', fontWeight: 900, fontSize: '1.25rem', letterSpacing: '0.25em' }}>
-              |||| | |||||| || | |||| ||||
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div>
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-cyan)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  US Marketplace Pass • {ticket.quantity}x {ticket.quantity === 1 ? 'Ticket' : 'Tickets'}
+                </span>
+                <h3 style={{ fontSize: '1.15rem', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)' }}>
+                  {ticket.eventName}
+                </h3>
+              </div>
+              <span className="btn-secondary" style={{ fontSize: '0.7rem', padding: '0.25rem 0.65rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--accent-cyan)' }}>
+                MOBILE TICKET
+              </span>
             </div>
-            <div style={{ fontFamily: 'monospace', color: '#64748B', fontSize: '0.72rem', marginTop: '0.35rem' }}>
-              GATE ENTRY BARCODE: {paymentIntent.payment_id}
-            </div>
-          </div>
 
-          {/* Actions: Add to Wallet & Download PDF */}
-          <div style={{ display: 'flex', gap: '0.65rem', marginTop: '1.15rem' }}>
-            <button className="btn-secondary" style={{ flex: 1, padding: '0.6rem', fontSize: '0.78rem' }}>
-              Add to Apple Wallet
-            </button>
-            <button className="btn-secondary" style={{ flex: 1, padding: '0.6rem', fontSize: '0.78rem' }}>
-              Download PDF Pass
-            </button>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.15rem' }}>
+              {ticket.venue} • {ticket.date} @ {ticket.time}
+            </p>
+
+            {/* Ticket Metadata Barcode Banner */}
+            <div style={{
+              background: '#FFFFFF',
+              padding: '1.15rem',
+              borderRadius: 'var(--radius-md)',
+              textAlign: 'center',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}>
+              <div style={{ fontFamily: 'monospace', color: '#0F172A', fontWeight: 900, fontSize: '1.25rem', letterSpacing: '0.25em' }}>
+                |||| | |||||| || | |||| ||||
+              </div>
+              <div style={{ fontFamily: 'monospace', color: '#64748B', fontSize: '0.72rem', marginTop: '0.35rem' }}>
+                GATE ENTRY BARCODE: {paymentIntent.payment_id}-{idx + 1}
+              </div>
+            </div>
+
+            {/* Actions: Add to Wallet & Download PDF */}
+            <div style={{ display: 'flex', gap: '0.65rem', marginTop: '1.15rem' }}>
+              <button className="btn-secondary" style={{ flex: 1, padding: '0.6rem', fontSize: '0.78rem' }}>
+                Add to Apple Wallet
+              </button>
+              <button className="btn-secondary" style={{ flex: 1, padding: '0.6rem', fontSize: '0.78rem' }}>
+                Download PDF Pass
+              </button>
+            </div>
           </div>
-        </div>
+        ))}
+
       </div>
 
       {/* Right Column Summary */}
@@ -128,6 +149,12 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Ticket Holder</span>
               <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{customer.fullName || 'Alex Morgan'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Total Tickets</span>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                {cartList.reduce((s, i) => s + i.quantity, 0)} {cartList.reduce((s, i) => s + i.quantity, 0) === 1 ? 'Ticket' : 'Tickets'}
+              </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Status</span>
@@ -158,8 +185,8 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
             </div>
           )}
 
-          <button onClick={onReset} className="btn-secondary" style={{ width: '100%', marginTop: '1.15rem', padding: '0.7rem', fontSize: '0.82rem' }}>
-            Start New Order
+          <button onClick={handleExploreMoreClick} className="btn-primary" style={{ width: '100%', marginTop: '1.15rem', padding: '0.75rem', fontSize: '0.82rem' }}>
+            Explore More Events
           </button>
         </div>
       </div>

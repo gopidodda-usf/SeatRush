@@ -39,6 +39,36 @@ export interface TicketItem {
   imageUrl: string;
 }
 
+export interface VenueSection {
+  id: string;
+  name: string;
+  category: 'vip' | 'lower' | 'upper' | 'suite';
+  priceCents: number;
+  availableSeats: number;
+  color: string;
+}
+
+export interface EventData {
+  id: string;
+  title: string;
+  artist: string;
+  category: 'concert' | 'sports' | 'theater' | 'comedy';
+  date: string;
+  time: string;
+  venue: string;
+  city: string;
+  state: string;
+  lat: number;
+  lng: number;
+  imageUrl: string;
+  startingPriceCents: number;
+  serviceFeeCents: number;
+  description: string;
+  sections: VenueSection[];
+  isFeatured?: boolean;
+  isRushDeal?: boolean;
+}
+
 export interface HyperswitchPaymentIntent {
   payment_id: string;
   merchant_id: string;
