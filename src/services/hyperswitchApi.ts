@@ -645,18 +645,47 @@ export async function createRefund(
   const body: any = { payment_id: paymentId, reason };
   if (amountCents) body.amount = amountCents;
 
-  const result = await request<HyperswitchRefund>('/refunds', 'POST', body);
-
-  if (result.log.responseStatus >= 400 || (result.data && (result.data as any).error)) {
-    return { data: result.data, log: result.log };
-  }
-
   const existingTx = getStoredTransactions().find((t) => t.payment_id === paymentId);
   const totalCaptured = existingTx?.amount_captured_cents || existingTx?.total_amount_cents || 27500;
   const prevRefunded = existingTx?.amount_refunded_cents || 0;
+  const remainingRefundable = Math.max(0, totalCaptured - prevRefunded);
+
+  // Send request to Hyperswitch API
+  const result = await request<HyperswitchRefund>('/refunds', 'POST', body);
+
+  // If requested refund exceeds remaining balance or gateway returns error, log 400 Bad Request in Payment Sequence
+  if ((amountCents && amountCents > remainingRefundable) || result.log.responseStatus >= 400 || (result.data && (result.data as any).error)) {
+    const errorMsg = (amountCents && amountCents > remainingRefundable)
+      ? `Refund amount ($${(amountCents / 100).toFixed(2)}) exceeds remaining balance ($${(remainingRefundable / 100).toFixed(2)})`
+      : ((result.data as any)?.reason || (result.data as any)?.message || `Refund Failed (HTTP ${result.log.responseStatus})`);
+
+    const errLog: ApiAuditLog = {
+      ...result.log,
+      responseStatus: 400,
+      responsePayload: {
+        error: {
+          type: 'invalid_request_error',
+          code: 'amount_exceeds_balance',
+          message: errorMsg,
+        },
+      },
+    };
+    saveApiAuditLog(errLog);
+
+    if (existingTx) {
+      updateStoredTransactionStatus(paymentId, {
+        status: existingTx.status,
+        historyLabel: 'refund_failed',
+        historyDetails: `Refund Failed (HTTP 400 Bad Request): ${errorMsg}`,
+        apiLog: errLog,
+      });
+    }
+
+    return { data: { error: errorMsg } as any, log: errLog };
+  }
+
   const refundAmount = amountCents || (totalCaptured - prevRefunded);
   const newTotalRefunded = prevRefunded + refundAmount;
-
   const isFullRefund = newTotalRefunded >= totalCaptured;
   const newStatus: PaymentStatus = 'refunded';
 

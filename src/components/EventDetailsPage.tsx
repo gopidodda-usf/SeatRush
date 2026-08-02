@@ -351,7 +351,7 @@ export const EventDetailsPage: React.FC<EventDetailsPageProps> = ({
                 'Adding Tickets...'
               ) : isAdded ? (
                 <>
-                  Go to Cart <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span>
+                  Go to Cart ➔
                 </>
               ) : (
                 'Add to Cart'

@@ -18,6 +18,7 @@ export const AdminDashboard: React.FC = () => {
   const [partialCaptureErrors, setPartialCaptureErrors] = useState<Record<string, boolean>>({});
   const [keepHoldCheckboxes, setKeepHoldCheckboxes] = useState<Record<string, boolean>>({});
   const [partialRefundInput, setPartialRefundInput] = useState<{ [id: string]: string }>({});
+  const [partialRefundErrors, setPartialRefundErrors] = useState<Record<string, boolean>>({});
   const [incrementalInput, setIncrementalInput] = useState<{ [id: string]: string }>({});
   const [expandedApiLogs, setExpandedApiLogs] = useState<Record<string, boolean>>({});
 
@@ -160,14 +161,29 @@ export const AdminDashboard: React.FC = () => {
 
   const handlePartialRefund = async (tx: AdminTransactionRecord) => {
     const inputVal = partialRefundInput[tx.payment_id];
-    const dollars = parseFloat(inputVal || '50');
-    if (isNaN(dollars) || dollars <= 0) return;
+    if (!inputVal || !inputVal.trim()) {
+      setPartialRefundErrors((prev) => ({ ...prev, [tx.payment_id]: true }));
+      return;
+    }
+    const dollars = parseFloat(inputVal);
+    if (isNaN(dollars) || dollars <= 0) {
+      setPartialRefundErrors((prev) => ({ ...prev, [tx.payment_id]: true }));
+      return;
+    }
+
     const cents = Math.round(dollars * 100);
+    setPartialRefundErrors((prev) => ({ ...prev, [tx.payment_id]: false }));
 
     setActionLoadingId(tx.payment_id);
-    await createRefund(tx.payment_id, cents, 'Admin Partial Refund');
+    const res = await createRefund(tx.payment_id, cents, 'Admin Partial Refund');
     setActionLoadingId(null);
-    setPartialRefundInput((prev) => ({ ...prev, [tx.payment_id]: '' }));
+
+    if (res.log.responseStatus >= 400 || (res.data && (res.data as any).error)) {
+      setPartialRefundErrors((prev) => ({ ...prev, [tx.payment_id]: true }));
+    } else {
+      setPartialRefundInput((prev) => ({ ...prev, [tx.payment_id]: '' }));
+    }
+
     setTransactions(getStoredTransactions());
   };
 
@@ -177,7 +193,7 @@ export const AdminDashboard: React.FC = () => {
   const totalSettledCents = transactions.reduce((acc, t) => acc + t.amount_captured_cents, 0);
   const totalRefundedCents = transactions.reduce((acc, t) => acc + t.amount_refunded_cents, 0);
 
-  const getStatusBadgeStyle = (status: PaymentStatus) => {
+  const getStatusBadgeStyle = (status: PaymentStatus | string) => {
     switch (status) {
       case 'succeeded':
         return { background: 'rgba(16, 185, 129, 0.15)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.3)' };
@@ -196,6 +212,7 @@ export const AdminDashboard: React.FC = () => {
         return { background: 'rgba(156, 163, 175, 0.15)', color: '#9CA3AF', border: '1px solid rgba(156, 163, 175, 0.3)' };
       case 'cancelled':
       case 'failed':
+      case 'refund_failed':
         return { background: 'rgba(239, 68, 68, 0.2)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.4)' };
       case 'requires_customer_action':
         return { background: 'rgba(6, 182, 212, 0.15)', color: '#22D3EE', border: '1px solid rgba(6, 182, 212, 0.3)' };
@@ -698,8 +715,17 @@ export const AdminDashboard: React.FC = () => {
                                             type="number"
                                             placeholder=""
                                             value={partialRefundInput[tx.payment_id] || ''}
-                                            onChange={(e) => setPartialRefundInput({ ...partialRefundInput, [tx.payment_id]: e.target.value })}
-                                            style={unifiedInputStyle}
+                                            onChange={(e) => {
+                                              setPartialRefundInput({ ...partialRefundInput, [tx.payment_id]: e.target.value });
+                                              if (partialRefundErrors[tx.payment_id]) {
+                                                setPartialRefundErrors((prev) => ({ ...prev, [tx.payment_id]: false }));
+                                              }
+                                            }}
+                                            style={{
+                                              ...unifiedInputStyle,
+                                              border: partialRefundErrors[tx.payment_id] ? '1px solid #F43F5E' : unifiedInputStyle.border,
+                                              boxShadow: partialRefundErrors[tx.payment_id] ? '0 0 0 2px rgba(244, 63, 94, 0.4)' : 'none',
+                                            }}
                                           />
                                           <button
                                             onClick={() => handlePartialRefund(tx)}

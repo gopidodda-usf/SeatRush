@@ -112,18 +112,10 @@ export const Header: React.FC<HeaderProps> = ({
           {/* 1. Admin ↗ Button (Grey) */}
           <button
             onClick={() => {
-              if (onNavigateView) {
-                if (isCurrentlyAdmin) {
-                  onNavigateView('home');
-                } else {
-                  onNavigateView('admin');
-                }
+              if (isCurrentlyAdmin) {
+                window.open('/', '_blank');
               } else {
-                if (isCurrentlyAdmin) {
-                  window.open('/', '_blank');
-                } else {
-                  window.open('/?view=admin', '_blank');
-                }
+                window.open('/?view=admin', '_blank');
               }
             }}
             className="btn-secondary"
@@ -149,6 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onOpenAudit}
             className="btn-secondary"
             style={{
+              position: 'relative',
               fontSize: '0.82rem',
               padding: '0.4rem 0.9rem',
               borderRadius: 'var(--radius-pill)',
@@ -158,16 +151,23 @@ export const Header: React.FC<HeaderProps> = ({
               fontWeight: 600,
             }}
           >
-            <span>APIs</span>
+            <span>APIs <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span></span>
             {logsCount > 0 && (
               <span style={{
-                background: 'rgba(255, 255, 255, 0.2)',
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                background: 'rgba(255, 255, 255, 0.25)',
                 color: '#FFFFFF',
-                fontSize: '0.7rem',
+                fontSize: '0.65rem',
                 fontWeight: 800,
-                padding: '0.05rem 0.45rem',
-                borderRadius: '999px',
-                marginLeft: '0.35rem',
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
               }}>
                 {logsCount}
               </span>
