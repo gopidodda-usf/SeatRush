@@ -346,8 +346,16 @@ export const EventDetailsPage: React.FC<EventDetailsPageProps> = ({
               />
             )}
 
-            <span style={{ position: 'relative', zIndex: 1 }}>
-              {isAdding ? 'Adding Tickets...' : isAdded ? 'Go to Cart ↗' : 'Add to Cart'}
+            <span style={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              {isAdding ? (
+                'Adding Tickets...'
+              ) : isAdded ? (
+                <>
+                  Go to Cart <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span>
+                </>
+              ) : (
+                'Add to Cart'
+              )}
             </span>
           </button>
         </div>

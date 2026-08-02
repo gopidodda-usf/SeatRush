@@ -137,7 +137,11 @@ export const Header: React.FC<HeaderProps> = ({
               fontWeight: 600,
             }}
           >
-            {isCurrentlyAdmin ? 'Storefront ↗' : 'Admin ↗'}
+            {isCurrentlyAdmin ? (
+              <>Storefront <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span></>
+            ) : (
+              <>Admin <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span></>
+            )}
           </button>
 
           {/* 2. APIs Button (Grey) */}

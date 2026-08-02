@@ -46,7 +46,7 @@ export const CartStep: React.FC<CartStepProps> = ({
           className="btn-primary"
           style={{ padding: '0.7rem 1.4rem', fontSize: '0.82rem' }}
         >
-          Explore Events ↗
+          Explore Events <span style={{ display: 'inline-block', transform: 'rotate(-45deg)' }}>➔</span>
         </button>
       </div>
     );
