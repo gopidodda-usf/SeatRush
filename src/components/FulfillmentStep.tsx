@@ -31,7 +31,9 @@ export const FulfillmentStep: React.FC<FulfillmentStepProps> = ({
 
   const ticketsSubtotalCents = cartList.reduce((sum, i) => sum + i.unitPriceCents * i.quantity, 0);
   const serviceFeesCents = cartList.reduce((sum, i) => sum + i.serviceFeeCents * i.quantity, 0);
-  const grandTotal = (ticketsSubtotalCents + serviceFeesCents) / 100;
+  const baseTotalCents = ticketsSubtotalCents + serviceFeesCents;
+  const paidAmountCents = paymentIntent?.amount || baseTotalCents;
+  const grandTotal = paidAmountCents / 100;
 
   const isCaptured = paymentIntent.status === 'succeeded';
 
